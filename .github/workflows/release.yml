@@ -10,9 +10,14 @@ on:
 permissions:
   contents: write
 
+# 同一 tag 重复触发时取消上一次，避免重复编译
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
-    name: 测试
+    name: 测试（仅测试，不编译）
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

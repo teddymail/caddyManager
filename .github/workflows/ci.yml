@@ -1,13 +1,28 @@
 name: CI
 
+# 只在代码/测试/配置变化时触发；纯文档（README/docs/LICENSE/.github）改动不跑
 on:
   push:
     branches: [main]
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'test/**'
+      - 'scripts/**'
+      - 'package.json'
+      - '.github/workflows/ci.yml'
   pull_request:
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'test/**'
+      - 'scripts/**'
+      - 'package.json'
+      - '.github/workflows/ci.yml'
 
 jobs:
   test:
-    name: 单元/API 测试
+    name: 单元/API 测试（仅测试，不编译）
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
