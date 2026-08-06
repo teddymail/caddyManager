@@ -133,3 +133,21 @@ test('logsEnabled=false 时不注入日志', () => {
   });
   assert.doesNotMatch(out, /output file/);
 });
+
+test('forwardHeaders 默认生成 X-Real-IP/X-Forwarded-* 转发头', () => {
+  const out = generateCaddyfile([{ ...base, forwardHeaders: true, trustProxy: false }]);
+  assert.match(out, /header_up X-Real-IP \{http\.request\.remote\.host\}/);
+  assert.match(out, /header_up X-Forwarded-Proto \{http\.request\.scheme\}/);
+  assert.match(out, /header_up X-Forwarded-Host \{http\.request\.host\}/);
+  assert.doesNotMatch(out, /trusted_proxies/);
+});
+
+test('trustProxy 生成 trusted_proxies private_ranges', () => {
+  const out = generateCaddyfile([{ ...base, forwardHeaders: true, trustProxy: true }]);
+  assert.match(out, /trusted_proxies private_ranges/);
+});
+
+test('forwardHeaders=false 不生成转发头', () => {
+  const out = generateCaddyfile([{ ...base, forwardHeaders: false, trustProxy: false }]);
+  assert.doesNotMatch(out, /header_up X-Real-IP/);
+});

@@ -112,6 +112,13 @@ export function generateCaddyfile(rules, opts = {}) {
 
     const upstreams = String(rule.upstream || '').split(/\s+/).filter(Boolean);
     const rp = [`    reverse_proxy ${matcher}${upstreams.join(' ')}`];
+    // 转发头：携带用户 IP 等代理信息给上游（X-Forwarded-For 由 Caddy 按 trusted_proxies 规则自动追加）
+    if (rule.forwardHeaders !== false) {
+      blockOpts.push(`header_up X-Real-IP {http.request.remote.host}`);
+      blockOpts.push(`header_up X-Forwarded-Proto {http.request.scheme}`);
+      blockOpts.push(`header_up X-Forwarded-Host {http.request.host}`);
+    }
+    if (rule.trustProxy) blockOpts.push('trusted_proxies private_ranges');
     if (upstreams.length > 1) blockOpts.unshift('lb_policy round_robin');
     if (blockOpts.length) {
       lines.push(`${rp[0]} {`);

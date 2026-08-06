@@ -100,6 +100,10 @@ export function normalizeRule(input, { partial = false } = {}) {
   // enabled
   if (has('enabled')) out.enabled = Boolean(input.enabled);
 
+  // 转发头：携带用户 IP 等代理信息给上游
+  if (has('forwardHeaders')) out.forwardHeaders = Boolean(input.forwardHeaders);
+  if (has('trustProxy')) out.trustProxy = Boolean(input.trustProxy);
+
   // ---------- 动态 DNS 相关 ----------
   if (has('dnsMode')) {
     const m = String(input.dnsMode);
@@ -133,6 +137,8 @@ export function normalizeRule(input, { partial = false } = {}) {
 
   if (!partial && out.enabled === undefined) out.enabled = true;
   if (!partial && out.tls === undefined) out.tls = 'auto';
+  if (!partial && out.forwardHeaders === undefined) out.forwardHeaders = true;
+  if (!partial && out.trustProxy === undefined) out.trustProxy = false;
 
   return { ok: true, value: out };
 }
@@ -150,6 +156,8 @@ export function defaultRule() {
     enabled: true,
     dnsMode: 'off',
     dnsHost: '',
+    forwardHeaders: true,
+    trustProxy: false,
     lookupInterval: 60,
     dnsInterval: 60,
     dnsResolvers: '',

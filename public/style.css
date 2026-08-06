@@ -178,6 +178,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); }
 .st-5xx { color: var(--danger); }
 .log-req { color: var(--text); word-break: break-all; }
 .log-host { color: var(--muted); }
+.log-ip { color: #fcd34d; }
+.log-size { color: var(--muted); }
 .log-dur { color: var(--muted); margin-left: auto; white-space: nowrap; }
 .log-level { font-weight: 700; width: 46px; }
 .lv-error { color: var(--danger); }

@@ -113,6 +113,8 @@
           </label>
           <div class="check-row">
             <label class="check"><input type="checkbox" id="f-strip" /> 去除前缀（uri strip_prefix）</label>
+            <label class="check"><input type="checkbox" id="f-fwdhdr" checked /> 携带转发头（X-Real-IP / X-Forwarded-*）</label>
+            <label class="check" title="前置有云负载均衡/Nginx 时开启，Caddy 据此解析真实用户 IP"><input type="checkbox" id="f-trustproxy" /> 信任前置代理</label>
             <label class="check"><input type="checkbox" id="f-enabled" checked /> 启用该规则</label>
           </div>
         </div>

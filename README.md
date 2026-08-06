@@ -118,7 +118,7 @@ node scripts/build.mjs bun-linux-x64 && scp dist/caddymanager-linux-x64 root@云
 
 「应用配置」生成的 Caddyfile 会自动注入日志配置：每个站点写**转发匹配日志**（access），全局写**错误日志**（error）。面板点「📄 日志」即可查看：
 
-- **转发匹配日志**：时间 / 状态码（2xx 绿、3xx 蓝、4xx 橙、5xx 红）/ 方法 / URI / 域名 / 耗时 —— 方便排查"哪个请求转发到了哪里、是否成功"
+- **转发匹配日志**：时间 / 状态码（2xx 绿、3xx 蓝、4xx 橙、5xx 红）/ 方法 / URI / **用户 IP（含 X-Forwarded-For）** / 域名 / 响应大小 / 耗时 —— 完整记录"哪个用户、哪个请求、转发到了哪里、是否成功"
 - **错误日志**：WARN / ERROR 级别，含上游连接失败等详细错误
 - 支持：类型切换、关键词过滤、行数选择（50~1000）、2 秒自动刷新
 
@@ -221,7 +221,9 @@ node src/server.js          # 默认 8888 端口
 | POST | `/api/refresh-dns` | 立即解析动态域名 + 自动更新 + 热重载 |
 | POST | `/api/examples` | 载入示例规则 |
 
-规则字段：`name`、`domains`、`upstream`（支持多地址）、`path`、`stripPrefix`、`tls`（auto/internal/off）、`healthPath`、`extra`、`enabled`、`dnsMode`（off/caddy/manager）、`dnsHost`、`lookupInterval`、`dnsInterval`、`dnsResolvers`。
+规则字段：`name`、`domains`、`upstream`（支持多地址）、`path`、`stripPrefix`、`tls`（auto/internal/off）、`healthPath`、`extra`、`enabled`、`forwardHeaders`、`trustProxy`、`dnsMode`（off/caddy/manager）、`dnsHost`、`lookupInterval`、`dnsInterval`、`dnsResolvers`。
+
+**转发头（用户 IP 携带）**：规则默认开启「携带转发头」，上游会收到 `X-Real-IP`、`X-Forwarded-Proto`、`X-Forwarded-Host`；`X-Forwarded-For` 由 Caddy 自动追加用户 IP 链（如 `9.9.9.9, 127.0.0.1`）。前置有云负载均衡/Nginx 时，开启「信任前置代理」（`trustProxy`）生成 `trusted_proxies private_ranges`，Caddy 据此解析真实用户 IP。
 
 **域名匹配优先级**：支持通配符 `*.example.com`；请求按 **精确域名 → 通配符** 匹配（如同时配置 `api.example.com` 和 `*.example.com`，访问 `api.example.com` 走精确规则，其他 `*.example.com` 子域走通配规则）。生成 Caddyfile 时精确规则自动排在通配规则之前。
 

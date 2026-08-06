@@ -20,6 +20,7 @@ export function parseCaddyLogLine(raw) {
         host: req.host,
         remote_ip: req.remote_ip,
         user_agent: req.user_agent,
+        headers: req.headers,
       },
       raw,
     };

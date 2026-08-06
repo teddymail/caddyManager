@@ -111,6 +111,8 @@
     $('#f-path').value = rule ? (rule.path || '') : '';
     $('#f-health').value = rule ? (rule.healthPath || '') : '';
     $('#f-strip').checked = rule ? Boolean(rule.stripPrefix) : false;
+    $('#f-fwdhdr').checked = rule ? rule.forwardHeaders !== false : true;
+    $('#f-trustproxy').checked = rule ? Boolean(rule.trustProxy) : false;
     $('#f-enabled').checked = rule ? rule.enabled !== false : true;
     $('#f-extra').value = rule ? (rule.extra || '') : '';
     $('#f-dnsmode').value = rule ? (rule.dnsMode || 'off') : 'off';
@@ -137,6 +139,8 @@
       path: $('#f-path').value.trim(),
       healthPath: $('#f-health').value.trim(),
       stripPrefix: $('#f-strip').checked,
+      forwardHeaders: $('#f-fwdhdr').checked,
+      trustProxy: $('#f-trustproxy').checked,
       enabled: $('#f-enabled').checked,
       extra: $('#f-extra').value,
       dnsMode: $('#f-dnsmode').value,
@@ -351,7 +355,10 @@
           const st = p.status;
           const cls = st >= 500 ? 'st-5xx' : st >= 400 ? 'st-4xx' : st >= 300 ? 'st-3xx' : 'st-2xx';
           const dur = p.duration ? `${(p.duration * 1000).toFixed(0)}ms` : '';
-          row.innerHTML = `<span class="log-ts">${fmtTs(p.ts)}</span> <span class="log-status ${cls}">${st || '?'}</span> <span class="log-req">${esc(p.request.method || '')} ${esc(p.request.uri || '')}</span> <span class="log-host">${esc(p.request.host || '')}</span> <span class="log-dur">${dur}</span>`;
+          const ip = p.request.remote_ip || '';
+          const xff = (p.request.headers && p.request.headers['X-Forwarded-For']) || null;
+          const size = p.size != null ? `${p.size}B` : '';
+          row.innerHTML = `<span class="log-ts">${fmtTs(p.ts)}</span> <span class="log-status ${cls}">${st || '?'}</span> <span class="log-req">${esc(p.request.method || '')} ${esc(p.request.uri || '')}</span> <span class="log-ip" title="用户 IP${xff ? '，XFF: ' + esc(xff.join(', ')) : ''}">${esc(ip)}</span> <span class="log-host">${esc(p.request.host || '')}</span> <span class="log-size">${size}</span> <span class="log-dur">${dur}</span>`;
         }
       } else {
         row.innerHTML = `<span class="log-raw">${esc(e.raw)}</span>`;

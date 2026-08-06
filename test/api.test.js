@@ -291,3 +291,15 @@ test('logs: 读取并解析 access 日志', async () => {
   const f = await call('GET', '/api/logs?type=access&q=502');
   assert.ok(f.data.entries.every((e) => e.raw.includes('502')));
 });
+
+// ---------- 转发头 ----------
+test('规则默认开启转发头、可关信任代理', async () => {
+  const r = await call('POST', '/api/rules', { name: 'hdr', domains: 'hdr.example.com', upstream: 'http://127.0.0.1:9001' });
+  assert.equal(r.status, 201);
+  assert.equal(r.data.rule.forwardHeaders, true);
+  assert.equal(r.data.rule.trustProxy, false);
+  const r2 = await call('POST', '/api/rules', { name: 'hdr2', domains: 'hdr2.example.com', upstream: 'http://127.0.0.1:9002', trustProxy: true, forwardHeaders: false });
+  assert.equal(r2.status, 201);
+  assert.equal(r2.data.rule.trustProxy, true);
+  assert.equal(r2.data.rule.forwardHeaders, false);
+});
