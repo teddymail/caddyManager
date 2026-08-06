@@ -1,4 +1,5 @@
 import path from 'node:path';
+import os from 'node:os';
 import dns from 'node:dns';
 import zlib from 'node:zlib';
 import { Router, sendJson, sendText, sendError, readBody, staticHandler } from './router.js';
@@ -84,6 +85,8 @@ export function createApp(config, { store } = {}) {
       source: config.caddyfilePathSource,
       envOverridden: Boolean(process.env.CADDYFILE_PATH),
       runningCaddyConfig: running,
+      fallbackEnabled: config.fallbackEnabled,
+      fallbackStatus: config.fallbackStatus,
       candidates,
     });
   });
@@ -126,6 +129,17 @@ export function createApp(config, { store } = {}) {
       .map((raw) => parseCaddyLogLine(raw))
       .filter((e) => !q || (e.raw || '').toLowerCase().includes(q));
     sendJson(req, res, 200, { ok: true, type, file, entries });
+  });
+
+  router.put('/api/config/fallback', async (req, res) => {
+    const body = await readBody(req);
+    const enabled = body.enabled !== undefined ? Boolean(body.enabled) : config.fallbackEnabled;
+    const status = Math.min(Math.max(Number(body.status) || config.fallbackStatus, 400), 599);
+    config.fallbackEnabled = enabled;
+    config.fallbackStatus = status;
+    config.settings = { ...config.settings, fallbackEnabled: enabled, fallbackStatus: status };
+    saveSettings(config.dataDir, config.settings);
+    sendJson(req, res, 200, { ok: true, enabled, status });
   });
 
   router.get('/api/preview', (req, res) => {
@@ -284,6 +298,49 @@ export function createApp(config, { store } = {}) {
     });
   });
 
+  // ---------- 兜底错误页（未匹配任何路由时由 Caddy Manager 渲染，CF 风格） ----------
+  function escHtml(v) {
+    return String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+  function renderFallbackPage(req, res) {
+    const url = new URL(req.url, 'http://localhost');
+    const xff = req.headers['x-forwarded-for'] || '';
+    const userIp = (xff.split(',')[0] || '').trim() || req.socket.remoteAddress || '-';
+    const status = config.fallbackStatus || 503;
+    const now = new Date().toLocaleString('zh-CN', { hour12: false });
+    const html = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${status} · 未配置路由</title>
+<style>
+body{background:#111827;color:#e5e7eb;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center}
+.card{max-width:600px;text-align:center;padding:40px 24px}
+.code{font-size:88px;font-weight:800;color:#f87171;line-height:1}
+h1{font-size:20px;margin:18px 0 8px}
+p{color:#9ca3af;font-size:13px;margin:6px 0}
+.trace{display:flex;align-items:center;justify-content:center;gap:12px;margin:24px 0;flex-wrap:wrap}
+.hop{background:#1f2937;border:1px solid #374151;border-radius:8px;padding:10px 16px;font-size:12px;color:#9ca3af}
+.hop b{display:block;color:#93c5fd;font-size:13px;margin-top:4px}
+.arrow{color:#6b7280;font-size:18px}
+.meta{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:#6b7280}
+a{color:#60a5fa}
+</style></head>
+<body><div class="card">
+<div class="code">${status}</div>
+<h1>没有匹配到任何转发规则</h1>
+<p>请求的域名未配置路由，无法转发到后端服务。请管理员在 <b>Caddy Manager</b> 中为该域名添加转发规则。</p>
+<div class="trace">
+  <div class="hop">🌐 网络<b>${escHtml(userIp)}</b></div>
+  <span class="arrow">→</span>
+  <div class="hop">🖥 代理<b>${escHtml(os.hostname())}</b></div>
+  <span class="arrow">→</span>
+  <div class="hop">📦 服务主机<b>未匹配</b></div>
+</div>
+<p class="meta">${escHtml(req.method)} ${escHtml(url.pathname)} · ${escHtml(req.headers.host || '')} · ${escHtml(now)}</p>
+</div></body></html>`;
+    sendText(req, res, status, html, 'text/html; charset=utf-8');
+  }
+
   // ---------- 静态资源 ----------
   let publicDir;
   try {
@@ -312,7 +369,12 @@ export function createApp(config, { store } = {}) {
         return log();
       }
       if (req.method === 'GET') {
-        staticRoute(req, res);
+        if (url.pathname === '/__fallback') {
+          renderFallbackPage(req, res); // Caddy 兜底转发 -> 错误页
+          return log();
+        }
+        if (staticRoute(req, res)) return log();
+        sendError(req, res, 404, 'Not Found'); // 直接访问面板的未知路径
         return log();
       }
       sendError(req, res, 405, 'Method Not Allowed');

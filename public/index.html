@@ -191,6 +191,12 @@
       <label>手动指定（绝对路径，留空恢复自动定位）
         <input id="f-cfgpath" placeholder="/etc/caddy/Caddyfile" autocomplete="off" />
       </label>
+      <div class="dns-panel" style="margin-top:8px">
+        <label class="check" title="未匹配任何规则的请求，默认转发到 Caddy Manager 并显示错误页"><input type="checkbox" id="f-fallback" checked /> 启用默认兜底（未匹配路由 → Caddy Manager 错误页）</label>
+        <label>兜底状态码
+          <input id="f-fallback-status" type="number" min="400" max="599" value="503" />
+        </label>
+      </div>
     </div>
     <div class="modal-foot">
       <button id="btn-cfg-auto" class="btn btn-ghost" type="button">恢复自动定位</button>

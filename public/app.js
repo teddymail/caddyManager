@@ -294,6 +294,8 @@
       src.textContent = SOURCE_LABEL[c.source] || c.source;
       src.className = `tag ${c.source === 'manual' || c.source === 'env' ? 'tag-tls-internal' : 'tag-dns'}`;
       $('#f-cfgpath').value = c.source === 'manual' ? c.caddyfilePath : '';
+      $('#f-fallback').checked = c.fallbackEnabled !== false;
+      $('#f-fallback-status').value = c.fallbackStatus || 503;
       const wrap = $('#cfg-candidates');
       wrap.innerHTML = '';
       for (const cand of c.candidates) {
@@ -318,8 +320,12 @@
   async function saveCfgPath() {
     try {
       await api('/api/config/caddyfile-path', { method: 'PUT', body: { path: $('#f-cfgpath').value.trim() } });
+      await api('/api/config/fallback', {
+        method: 'PUT',
+        body: { enabled: $('#f-fallback').checked, status: Number($('#f-fallback-status').value) || 503 },
+      });
       $('#settings-modal').close();
-      toast('已保存目标路径');
+      toast('已保存设置');
       await refreshStatus();
     } catch (err) { toast(err.message, 'err'); }
   }

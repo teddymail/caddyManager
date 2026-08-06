@@ -132,6 +132,7 @@ node scripts/build.mjs bun-linux-x64 && scp dist/caddymanager-linux-x64 root@云
 | 🚀 快速转发配置 | 中文面板 / REST API 建规则，自动生成规范 Caddyfile，支持启停、路径、TLS、健康检查 |
 | 🔄 动态域名跟随 | Caddy 原生 `dynamic a` 定时刷新（无需重载）+ 管理器看门狗自动改 IP 并热重载 |
 | 🌐 负载均衡 | 多上游自动 `lb_policy round_robin` |
+| 🛟 默认兜底 | 未匹配任何路由的请求自动转到 Caddy Manager 错误页（CF 风格），显示用户 IP + 网络→代理→服务主机链路 + 503 |
 | 📄 日志查看 | 面板直接看 Caddy **转发匹配日志**（方法/URI/状态/耗时）与**错误日志**（上游连接失败等），支持过滤/自动刷新 |
 | 📦 单文件二进制 | Bun 交叉编译 Linux x64/arm64 自包含 ELF，目标机零依赖 |
 | 📦 Ansible 部署 | 拷一个二进制 + systemd + 健康检查，幂等可重复执行 |
@@ -178,6 +179,16 @@ node src/server.js          # 默认 8888 端口
 
 首次运行自动创建 `data/rules.json`。
 
+### 默认兜底（未匹配路由）
+
+生成配置自动附带兜底站点：**未匹配任何规则的请求 → 转发到 Caddy Manager 的 `/__fallback`，返回 CF 风格错误页**（默认 503），页面显示：
+
+```
+🌐 网络(用户IP)  →  🖥 代理(主机名)  →  📦 服务主机(未匹配)
+```
+
+同时展示请求方法/路径/域名/时间，提示"没有匹配到任何转发规则"。可在 ⚙ 设置里**开关兜底**和**修改状态码**（400~599）；`FALLBACK_ENABLED` / `FALLBACK_STATUS` / `FALLBACK_TARGET` 环境变量可覆盖。
+
 ### Caddyfile 目标路径（自动定位 + 手动指定）
 
 生成的目标 Caddyfile 路径按优先级自动定位：
@@ -206,6 +217,9 @@ node src/server.js          # 默认 8888 端口
 | `CADDY_ACCESS_LOG` | 自动定位 | Caddy 转发匹配日志文件（默认 `/var/log/caddy/access.log`，不可写则 `data/access.log`） |
 | `CADDY_ERROR_LOG` | 自动定位 | Caddy 错误日志文件（默认 `/var/log/caddy/error.log`，不可写则 `data/error.log`） |
 | `CADDY_LOGS` | `1` | `0` 时不在生成的 Caddyfile 中注入日志配置 |
+| `FALLBACK_ENABLED` | `1` | 未匹配路由时启用默认兜底（转到 Caddy Manager 错误页） |
+| `FALLBACK_STATUS` | `503` | 兜底错误页状态码 |
+| `FALLBACK_TARGET` | `http://127.0.0.1:<PORT>` | 兜底转发目标（默认 Caddy Manager 自身） |
 | `QUIET` | 空 | `1` 时关闭请求日志，提升吞吐 |
 
 ### REST API

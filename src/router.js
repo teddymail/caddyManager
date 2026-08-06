@@ -132,31 +132,30 @@ export function staticHandler(rootDir, { embedded = {} } = {}) {
     const embeddedBody = embedded[key];
     if (embeddedBody !== undefined) {
       const ext = path.extname(key).toLowerCase();
-      const cache = 'no-cache';
       writeRes(req, res, 200, embeddedBody, MIME[ext] || 'text/plain; charset=utf-8', {
-        'Cache-Control': cache,
+        'Cache-Control': 'no-cache',
       });
-      return;
+      return true;
     }
     let file;
     try {
       file = path.join(root, path.normalize(p));
-      if (!file.startsWith(root)) return sendError(req, res, 403, '禁止访问');
+      if (!file.startsWith(root)) return false;
     } catch {
-      return sendError(req, res, 404, 'Not Found');
+      return false;
     }
     let stat;
     try {
       stat = fs.statSync(file);
     } catch {
-      return sendError(req, res, 404, 'Not Found');
+      return false;
     }
-    if (!stat.isFile()) return sendError(req, res, 404, 'Not Found');
+    if (!stat.isFile()) return false;
     const ext = path.extname(file).toLowerCase();
-    const cache = 'no-cache';
     writeRes(req, res, 200, fs.readFileSync(file), MIME[ext] || 'application/octet-stream', {
-      'Cache-Control': cache,
+      'Cache-Control': 'no-cache',
       'ETag': `"${stat.size}-${Math.floor(stat.mtimeMs)}"`,
     });
+    return true;
   };
 }

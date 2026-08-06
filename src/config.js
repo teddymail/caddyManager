@@ -78,6 +78,13 @@ export function loadConfig(env = process.env) {
     ? path.resolve(env.CADDY_ERROR_LOG)
     : path.join(logDir, 'error.log');
 
+  // 默认兜底（未匹配路由 -> 转发到 Caddy Manager 自身，返回 503 错误页）
+  const fallbackEnabled = env.FALLBACK_ENABLED !== undefined
+    ? env.FALLBACK_ENABLED !== '0' && env.FALLBACK_ENABLED !== 'false'
+    : settings.fallbackEnabled !== undefined ? settings.fallbackEnabled : true;
+  const fallbackStatus = Number(env.FALLBACK_STATUS || settings.fallbackStatus || 503);
+  const fallbackTarget = env.FALLBACK_TARGET || `http://127.0.0.1:${Number.parseInt(env.PORT, 10) || 8888}`;
+
   // 鉴权（默认强制开启）：AUTH_TOKEN > 已持久化 token > 自动生成并持久化
   let authToken;
   let authTokenSource;
@@ -125,6 +132,9 @@ export function loadConfig(env = process.env) {
     logsEnabled: env.CADDY_LOGS !== '0' && env.CADDY_LOGS !== 'false',
     caddyAccessLog,
     caddyErrorLog,
+    fallbackEnabled,
+    fallbackStatus,
+    fallbackTarget,
     settings,
     caddyfilePathSource,
     caddyfilePathCandidates: candidates,

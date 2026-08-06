@@ -303,3 +303,36 @@ test('规则默认开启转发头、可关信任代理', async () => {
   assert.equal(r2.data.rule.trustProxy, true);
   assert.equal(r2.data.rule.forwardHeaders, false);
 });
+
+// ---------- 默认兜底 ----------
+test('Caddy 兜底路径 /__fallback 返回 503 错误页（含用户 IP 与链路）', async () => {
+  const res = await fetch(base + '/__fallback', {
+    headers: { 'X-Forwarded-For': '8.8.4.4' },
+  });
+  assert.equal(res.status, 503);
+  const html = await res.text();
+  assert.match(html, /没有匹配到任何转发规则/);
+  assert.match(html, /8\.8\.4\.4/);
+  assert.match(html, /网络/);
+  assert.match(html, /代理/);
+  assert.match(html, /服务主机/);
+});
+
+test('直接访问面板未知路径返回 404（不渲染错误页）', async () => {
+  const res = await fetch(base + '/no-such-page-xyz');
+  assert.equal(res.status, 404);
+});
+
+test('config/fallback: 可修改兜底开关与状态码', async () => {
+  const r = await call('PUT', '/api/config/fallback', { enabled: false, status: 404 });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.enabled, false);
+  assert.equal(r.data.status, 404);
+  // 关闭后兜底页应 404
+  const res = await fetch(base + '/__fallback');
+  assert.equal(res.status, 404);
+  // 恢复
+  await call('PUT', '/api/config/fallback', { enabled: true, status: 503 });
+  const res2 = await fetch(base + '/__fallback');
+  assert.equal(res2.status, 503);
+});
