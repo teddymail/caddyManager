@@ -336,3 +336,23 @@ test('config/fallback: 可修改兜底开关与状态码', async () => {
   const res2 = await fetch(base + '/__fallback');
   assert.equal(res2.status, 503);
 });
+
+// ---------- 日志路径设置 ----------
+test('config/log-paths: 手动指定并恢复自动', async () => {
+  const customAccess = path.join(tmp, 'custom-access.log');
+  const customError = path.join(tmp, 'custom-error.log');
+  const r = await call('PUT', '/api/config/log-paths', { access: customAccess, error: customError });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.caddyAccessLog, customAccess);
+  assert.equal(r.data.caddyErrorLog, customError);
+  const g = await call('GET', '/api/config');
+  assert.equal(g.data.accessLogSource, 'manual');
+  assert.equal(g.data.errorLogSource, 'manual');
+  // 相对路径拒绝
+  const bad = await call('PUT', '/api/config/log-paths', { access: 'rel/path.log' });
+  assert.equal(bad.status, 400);
+  // 恢复自动
+  const r2 = await call('PUT', '/api/config/log-paths', { access: '', error: '' });
+  assert.equal(r2.status, 200);
+  assert.notEqual(r2.data.accessLogSource, 'manual');
+});

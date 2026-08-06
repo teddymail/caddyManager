@@ -122,7 +122,7 @@ node scripts/build.mjs bun-linux-x64 && scp dist/caddymanager-linux-x64 root@云
 - **错误日志**：WARN / ERROR 级别，含上游连接失败等详细错误
 - 支持：类型切换、关键词过滤、行数选择（50~1000）、2 秒自动刷新
 
-日志文件路径自动定位（`/var/log/caddy` 可写则用系统路径，否则 `data/`），也可用环境变量 `CADDY_ACCESS_LOG` / `CADDY_ERROR_LOG` 指定；`CADDY_LOGS=0` 可关闭注入。
+日志文件路径按 **环境变量 > 面板手动指定（⚙ 设置，持久化到 `data/settings.json`）> 自动定位** 三级解析：`/var/log/caddy` 可写则用系统路径，否则 `data/`。`CADDY_LOGS=0` 可关闭日志注入。
 
 ## 核心能力总览
 
@@ -214,8 +214,8 @@ node src/server.js          # 默认 8888 端口
 | `AUTH_TOKEN` | 自动生成 | API Bearer Token；**留空自动生成** 32 位随机令牌（打印在启动日志、持久化到 `data/settings.json`） |
 | `GLOBAL_TLS_EMAIL` | 空 | 全局 ACME 邮箱 |
 | `DNS_WATCH_INTERVAL_MS` | `5000` | 看门狗扫描间隔 |
-| `CADDY_ACCESS_LOG` | 自动定位 | Caddy 转发匹配日志文件（默认 `/var/log/caddy/access.log`，不可写则 `data/access.log`） |
-| `CADDY_ERROR_LOG` | 自动定位 | Caddy 错误日志文件（默认 `/var/log/caddy/error.log`，不可写则 `data/error.log`） |
+| `CADDY_ACCESS_LOG` | 自动定位 | Caddy 转发匹配日志文件（默认 `/var/log/caddy/access.log`，不可写则 `data/access.log`）；**也可在面板 ⚙ 设置手动指定** |
+| `CADDY_ERROR_LOG` | 自动定位 | Caddy 错误日志文件（默认 `/var/log/caddy/error.log`，不可写则 `data/error.log`）；**也可在面板 ⚙ 设置手动指定** |
 | `CADDY_LOGS` | `1` | `0` 时不在生成的 Caddyfile 中注入日志配置 |
 | `FALLBACK_ENABLED` | `1` | 未匹配路由时启用默认兜底（转到 Caddy Manager 错误页） |
 | `FALLBACK_STATUS` | `503` | 兜底错误页状态码 |

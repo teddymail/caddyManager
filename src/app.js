@@ -85,6 +85,10 @@ export function createApp(config, { store } = {}) {
       source: config.caddyfilePathSource,
       envOverridden: Boolean(process.env.CADDYFILE_PATH),
       runningCaddyConfig: running,
+      caddyAccessLog: config.caddyAccessLog,
+      caddyErrorLog: config.caddyErrorLog,
+      accessLogSource: config.accessLogSource,
+      errorLogSource: config.errorLogSource,
       fallbackEnabled: config.fallbackEnabled,
       fallbackStatus: config.fallbackStatus,
       candidates,
@@ -140,6 +144,31 @@ export function createApp(config, { store } = {}) {
     config.settings = { ...config.settings, fallbackEnabled: enabled, fallbackStatus: status };
     saveSettings(config.dataDir, config.settings);
     sendJson(req, res, 200, { ok: true, enabled, status });
+  });
+
+  router.put('/api/config/log-paths', async (req, res) => {
+    if (process.env.CADDY_ACCESS_LOG || process.env.CADDY_ERROR_LOG) {
+      return sendError(req, res, 400, '当前日志路径由环境变量 CADDY_ACCESS_LOG / CADDY_ERROR_LOG 指定，请修改环境变量或先取消');
+    }
+    const body = await readBody(req);
+    const access = String((body && body.access) || '').trim();
+    const error = String((body && body.error) || '').trim();
+    for (const p of [access, error]) {
+      if (p && !path.isAbsolute(p)) return sendError(req, res, 400, '日志路径必须是绝对路径');
+    }
+    config.settings = { ...config.settings, caddyAccessLog: access, caddyErrorLog: error };
+    saveSettings(config.dataDir, config.settings);
+    config.caddyAccessLog = access ? path.resolve(access) : path.join(config.caddyLogDir, 'access.log');
+    config.caddyErrorLog = error ? path.resolve(error) : path.join(config.caddyLogDir, 'error.log');
+    config.accessLogSource = access ? 'manual' : 'auto';
+    config.errorLogSource = error ? 'manual' : 'auto';
+    sendJson(req, res, 200, {
+      ok: true,
+      caddyAccessLog: config.caddyAccessLog,
+      caddyErrorLog: config.caddyErrorLog,
+      accessLogSource: config.accessLogSource,
+      errorLogSource: config.errorLogSource,
+    });
   });
 
   router.get('/api/preview', (req, res) => {

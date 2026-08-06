@@ -73,10 +73,16 @@ export function loadConfig(env = process.env) {
   })();
   const caddyAccessLog = env.CADDY_ACCESS_LOG
     ? path.resolve(env.CADDY_ACCESS_LOG)
-    : path.join(logDir, 'access.log');
+    : settings.caddyAccessLog
+      ? path.resolve(settings.caddyAccessLog)
+      : path.join(logDir, 'access.log');
   const caddyErrorLog = env.CADDY_ERROR_LOG
     ? path.resolve(env.CADDY_ERROR_LOG)
-    : path.join(logDir, 'error.log');
+    : settings.caddyErrorLog
+      ? path.resolve(settings.caddyErrorLog)
+      : path.join(logDir, 'error.log');
+  const accessLogSource = env.CADDY_ACCESS_LOG ? 'env' : settings.caddyAccessLog ? 'manual' : 'auto';
+  const errorLogSource = env.CADDY_ERROR_LOG ? 'env' : settings.caddyErrorLog ? 'manual' : 'auto';
 
   // 默认兜底（未匹配路由 -> 转发到 Caddy Manager 自身，返回 503 错误页）
   const fallbackEnabled = env.FALLBACK_ENABLED !== undefined
@@ -132,6 +138,9 @@ export function loadConfig(env = process.env) {
     logsEnabled: env.CADDY_LOGS !== '0' && env.CADDY_LOGS !== 'false',
     caddyAccessLog,
     caddyErrorLog,
+    accessLogSource,
+    errorLogSource,
+    caddyLogDir: logDir,
     fallbackEnabled,
     fallbackStatus,
     fallbackTarget,

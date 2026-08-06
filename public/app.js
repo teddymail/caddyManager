@@ -296,6 +296,8 @@
       $('#f-cfgpath').value = c.source === 'manual' ? c.caddyfilePath : '';
       $('#f-fallback').checked = c.fallbackEnabled !== false;
       $('#f-fallback-status').value = c.fallbackStatus || 503;
+      $('#f-log-access').value = c.accessLogSource === 'manual' ? c.caddyAccessLog : '';
+      $('#f-log-error').value = c.errorLogSource === 'manual' ? c.caddyErrorLog : '';
       const wrap = $('#cfg-candidates');
       wrap.innerHTML = '';
       for (const cand of c.candidates) {
@@ -323,6 +325,10 @@
       await api('/api/config/fallback', {
         method: 'PUT',
         body: { enabled: $('#f-fallback').checked, status: Number($('#f-fallback-status').value) || 503 },
+      });
+      await api('/api/config/log-paths', {
+        method: 'PUT',
+        body: { access: $('#f-log-access').value.trim(), error: $('#f-log-error').value.trim() },
       });
       $('#settings-modal').close();
       toast('已保存设置');

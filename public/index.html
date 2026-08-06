@@ -197,6 +197,15 @@
           <input id="f-fallback-status" type="number" min="400" max="599" value="503" />
         </label>
       </div>
+      <div class="dns-panel" style="margin-top:8px">
+        <label class="muted" style="font-weight:600">Caddy 日志路径（留空自动定位）</label>
+        <label>转发匹配日志（access）
+          <input id="f-log-access" placeholder="自动：/var/log/caddy/access.log 或 data/access.log" autocomplete="off" />
+        </label>
+        <label>错误日志（error）
+          <input id="f-log-error" placeholder="自动：/var/log/caddy/error.log 或 data/error.log" autocomplete="off" />
+        </label>
+      </div>
     </div>
     <div class="modal-foot">
       <button id="btn-cfg-auto" class="btn btn-ghost" type="button">恢复自动定位</button>
