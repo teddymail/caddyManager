@@ -103,7 +103,10 @@ export function loadConfig(env = process.env) {
   } else {
     authToken = crypto.randomBytes(16).toString('hex');
     authTokenSource = 'generated';
-    try { saveSettings(dataDir, { ...settings, authToken }); } catch { /* 持久化失败则仅本次运行有效 */ }
+    try {
+      saveSettings(dataDir, { ...settings, authToken });
+      settings.authToken = authToken; // 同步到内存，避免后续保存设置时覆盖丢失
+    } catch { /* 持久化失败则仅本次运行有效 */ }
   }
 
   // 优先级：环境变量 > 面板手动设置 > 自动定位

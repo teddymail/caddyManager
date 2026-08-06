@@ -14,7 +14,8 @@
     if (body !== undefined) headers['Content-Type'] = 'application/json';
     const res = await fetch(path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
     if (res.status === 401) {
-      openTokenModal(true);
+      updateAuthBadge(false); // 同步登录状态，避免徽章与实际不一致
+      if (!$('#token-modal').open) openTokenModal(true);
       throw new Error('令牌不正确或已失效，请重新输入');
     }
     let data = null;
@@ -229,12 +230,27 @@
   }
 
   // ---------- Token ----------
-  function updateAuthBadge() {
+  let authed = false;
+  function updateAuthBadge(ok) {
+    authed = ok;
     const badge = $('#auth-badge');
-    const has = !!localStorage.getItem('cm_token');
-    badge.textContent = has ? '🔑 已登录' : '🔑 未登录';
-    badge.className = `badge ${has ? 'badge-ok' : 'badge-bad'}`;
-    badge.title = has ? '令牌已保存在本浏览器，操作自动携带' : '首次使用请输入令牌';
+    badge.textContent = ok ? '🔑 已登录' : '🔑 未登录';
+    badge.className = `badge ${ok ? 'badge-ok' : 'badge-bad'}`;
+    badge.title = ok ? '令牌已验证有效，操作自动携带' : '令牌无效或缺失，需要重新登录';
+  }
+
+  /** 真实校验 token：只有请求通过才算已登录（避免徽章与实际状态不一致）。 */
+  async function verifyAuth() {
+    const token = localStorage.getItem('cm_token');
+    if (!token) { updateAuthBadge(false); return false; }
+    try {
+      const res = await fetch('/api/meta', { headers: { Authorization: `Bearer ${token}` } });
+      if (res.status === 200) { updateAuthBadge(true); return true; }
+      if (res.status === 401) { updateAuthBadge(false); return false; }
+      return authed; // 其他错误保持原状态
+    } catch {
+      return authed;
+    }
   }
 
   function openTokenModal(force = false) {
@@ -256,7 +272,7 @@
     if (!v) {
       localStorage.removeItem('cm_token');
       $('#token-modal').close();
-      updateAuthBadge();
+      updateAuthBadge(false);
       toast('已清除 Token');
       return;
     }
@@ -271,7 +287,7 @@
       if (!res.ok) throw new Error(`验证失败 (HTTP ${res.status})`);
       localStorage.setItem('cm_token', v);
       $('#token-modal').close();
-      updateAuthBadge();
+      updateAuthBadge(true);
       toast('Token 已保存，正在加载…');
       meta = await api('/api/meta');
       await Promise.all([loadRules(), refreshStatus()]);
@@ -439,7 +455,7 @@
     $('#btn-token-save').addEventListener('click', saveToken);
     $('#btn-token-clear').addEventListener('click', async () => {
       localStorage.removeItem('cm_token');
-      updateAuthBadge();
+      updateAuthBadge(false);
       $('#token-modal').close();
       toast('已退出登录');
       await new Promise((r) => setTimeout(r, 300));
@@ -465,9 +481,14 @@
   // ---------- 启动 ----------
   async function init() {
     bind();
-    updateAuthBadge();
     if (!localStorage.getItem('cm_token')) {
+      updateAuthBadge(false);
       openTokenModal(true); // 服务默认强制鉴权，首次使用先输入令牌
+      return;
+    }
+    const ok = await verifyAuth(); // 真实校验，避免"显示已登录但操作 401"
+    if (!ok) {
+      openTokenModal(true);
       return;
     }
     try { meta = await api('/api/meta'); } catch { /* ignore */ }
