@@ -16,7 +16,12 @@ server.listen(config.port, config.host, () => {
   console.log(`  Caddyfile: ${config.caddyfilePath}`);
   console.log(`  Caddy 可执行: ${config.caddyBin}`);
   console.log(`  动态 DNS 看门狗: ${config.dnsWatchIntervalMs ? `每 ${config.dnsWatchIntervalMs}ms 扫描` : '关闭'}`);
-  console.log(`  鉴权: ${config.authToken ? '已启用 (Bearer Token)' : '未启用（建议设置 AUTH_TOKEN）'}`);
+  const authSource = config.authTokenSource === 'generated' ? '自动生成' : config.authTokenSource === 'env' ? '来自 AUTH_TOKEN' : '持久化';
+  console.log(`  鉴权: 已启用 (Bearer Token · ${authSource})`);
+  if (config.authTokenSource === 'generated') {
+    console.log(`  ⚠ 访问令牌: ${config.authToken}`);
+    console.log(`    （面板首次打开需输入此令牌，请妥善保存）`);
+  }
   console.log(`==============================================`);
   handler.startDnsWatcher();
 });

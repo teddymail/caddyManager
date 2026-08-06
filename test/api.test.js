@@ -199,3 +199,13 @@ test('config: 相对路径被拒绝', async () => {
   const r = await call('PUT', '/api/config/caddyfile-path', { path: 'relative/path' });
   assert.equal(r.status, 400);
 });
+
+// ---------- 鉴权 ----------
+test('鉴权：设置 token 后无 token 请求被拒、带 token 通过', async () => {
+  config.authToken = 'test-secret-123';
+  const denied = await call('GET', '/api/rules');
+  assert.equal(denied.status, 401);
+  const res = await fetch(base + '/api/rules', { headers: { Authorization: 'Bearer test-secret-123' } });
+  assert.equal(res.status, 200);
+  config.authToken = '';
+});

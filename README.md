@@ -125,7 +125,7 @@ node scripts/build.mjs bun-linux-x64 && scp dist/caddymanager-linux-x64 root@云
 | 📦 单文件二进制 | Bun 交叉编译 Linux x64/arm64 自包含 ELF，目标机零依赖 |
 | 📦 Ansible 部署 | 拷一个二进制 + systemd + 健康检查，幂等可重复执行 |
 | 🚀 高性能 | 响应缓存、Gzip、状态缓存、写盘合并；实测 ~1.2 万 QPS / 0.08ms |
-| 🔐 鉴权 | `AUTH_TOKEN` Bearer 鉴权（生产必开） |
+| 🔐 鉴权 | **默认强制开启** Bearer 鉴权；未设 `AUTH_TOKEN` 时自动生成随机令牌并持久化，面板首次打开需输入 |
 
 ---
 
@@ -189,7 +189,7 @@ node src/server.js          # 默认 8888 端口
 | `CADDYFILE_PATH` | 自动定位 | 生成的目标 Caddyfile；**留空自动定位**：`/etc/caddy/Caddyfile` → `~/.config/caddy/Caddyfile` → `data/Caddyfile`，也可在面板 ⚙ 设置里手动指定 |
 | `CADDY_RELOAD_CMD` | 空 | 自定义生效命令，如 `systemctl reload caddy`（优先于 admin API / caddy reload） |
 | `CADDY_START_CMD` | 空 | 自定义启动命令，如 `systemctl restart caddy` |
-| `AUTH_TOKEN` | 空 | API Bearer Token（生产必设） |
+| `AUTH_TOKEN` | 自动生成 | API Bearer Token；**留空自动生成** 32 位随机令牌（打印在启动日志、持久化到 `data/settings.json`） |
 | `GLOBAL_TLS_EMAIL` | 空 | 全局 ACME 邮箱 |
 | `DNS_WATCH_INTERVAL_MS` | `5000` | 看门狗扫描间隔 |
 | `QUIET` | 空 | `1` 时关闭请求日志，提升吞吐 |
@@ -281,4 +281,4 @@ node scripts/e2e-dynamic-dns.mjs  # 端到端验证 Caddy dynamic a 自动跟随
 
 ## 安全提示
 
-- 本服务可改写 Caddy 配置并触发重载，**必须设置 `AUTH_TOKEN`**，且建议仅在内网/VPN 内暴露 8888 端口。
+- 本服务可改写 Caddy 配置并触发重载，**鉴权默认强制开启**：未设 `AUTH_TOKEN` 时自动生成随机令牌（启动日志可见）。请把令牌交给管理员，并建议仅在内网/VPN 内暴露 8888 端口。

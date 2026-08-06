@@ -201,7 +201,7 @@
       <button type="button" class="btn-close" data-close="token-modal">✕</button>
     </div>
     <div class="modal-body">
-      <p class="muted">设置后，所有 API 请求需携带 <code>Authorization: Bearer &lt;token&gt;</code>。留空表示不鉴权（不推荐）。</p>
+      <p class="muted">服务已强制开启鉴权，所有操作需携带 <code>Authorization: Bearer &lt;token&gt;</code>。<br/>令牌在服务器启动日志中查看（自动生成），或由管理员设置 <code>AUTH_TOKEN</code>。</p>
       <input id="f-token" type="password" placeholder="输入 Bearer Token" autocomplete="off" />
     </div>
     <div class="modal-foot">

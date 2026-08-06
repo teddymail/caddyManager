@@ -1,6 +1,7 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
+import crypto from 'node:crypto';
 
 /**
  * 服务配置加载。所有配置项均可通过环境变量覆盖。
@@ -66,6 +67,21 @@ export function loadConfig(env = process.env) {
   const settings = loadSettings(dataDir);
   const candidates = detectCaddyfileCandidates(dataDir);
 
+  // 鉴权（默认强制开启）：AUTH_TOKEN > 已持久化 token > 自动生成并持久化
+  let authToken;
+  let authTokenSource;
+  if (env.AUTH_TOKEN) {
+    authToken = env.AUTH_TOKEN.trim();
+    authTokenSource = 'env';
+  } else if (settings.authToken) {
+    authToken = settings.authToken;
+    authTokenSource = 'settings';
+  } else {
+    authToken = crypto.randomBytes(16).toString('hex');
+    authTokenSource = 'generated';
+    try { saveSettings(dataDir, { ...settings, authToken }); } catch { /* 持久化失败则仅本次运行有效 */ }
+  }
+
   // 优先级：环境变量 > 面板手动设置 > 自动定位
   let caddyfilePath;
   let caddyfilePathSource;
@@ -89,7 +105,8 @@ export function loadConfig(env = process.env) {
     caddyfilePath,
     caddyReloadCmd: env.CADDY_RELOAD_CMD || '',
     caddyStartCmd: env.CADDY_START_CMD || '',
-    authToken: env.AUTH_TOKEN || '',
+    authToken,
+    authTokenSource,
     globalTlsEmail: env.GLOBAL_TLS_EMAIL || '',
     seedExamples: env.SEED_EXAMPLES === '1' || env.SEED_EXAMPLES === 'true',
     dnsWatchIntervalMs: Number.parseInt(env.DNS_WATCH_INTERVAL_MS, 10) || 5000,

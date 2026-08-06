@@ -230,12 +230,18 @@
     $('#token-modal').showModal();
   }
 
-  function saveToken() {
+  async function saveToken() {
     const v = $('#f-token').value.trim();
     if (v) localStorage.setItem('cm_token', v);
     else localStorage.removeItem('cm_token');
     $('#token-modal').close();
-    toast(v ? 'Token 已保存' : '已清除 Token');
+    toast(v ? 'Token 已保存，正在加载…' : '已清除 Token');
+    if (v) {
+      try {
+        meta = await api('/api/meta');
+        await Promise.all([loadRules(), refreshStatus()]);
+      } catch (err) { toast(err.message, 'err'); }
+    }
   }
 
   // ---------- Caddyfile 路径设置 ----------
@@ -347,6 +353,10 @@
   // ---------- 启动 ----------
   async function init() {
     bind();
+    if (!localStorage.getItem('cm_token')) {
+      openTokenModal(true); // 服务默认强制鉴权，首次使用先输入令牌
+      return;
+    }
     try { meta = await api('/api/meta'); } catch { /* ignore */ }
     try {
       await Promise.all([loadRules(), refreshStatus()]);
