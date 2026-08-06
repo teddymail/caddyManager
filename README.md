@@ -201,6 +201,34 @@ node src/server.js          # 默认 8888 端口
 
 ---
 
+## 发布 Release（自动编译）
+
+### 方式一：GitHub Actions 自动构建（推荐）
+
+仓库已配置 [`.github/workflows/release.yml`](.github/workflows/release.yml)：
+
+```bash
+git tag v1.0.0          # 打版本标签
+git push origin v1.0.0  # 推送标签
+```
+
+Actions 自动执行：**跑测试 → 交叉编译 4 个平台单文件二进制（Linux x64/arm64 + macOS x64/arm64）→ 生成 SHA256 校验和 → 创建 GitHub Release 并上传**。
+也可在 Actions 页面手动触发（`workflow_dispatch`）。发布产物在 GitHub Releases 页可直接下载，目标机 `scp` 过去即可运行，无需 Node。
+
+### 方式二：本地手动编译
+
+```bash
+node scripts/build.mjs bun-linux-x64      # Linux x86_64
+node scripts/build.mjs bun-linux-arm64    # Linux ARM64
+node scripts/build.mjs bun-darwin-x64     # macOS Intel
+node scripts/build.mjs bun-darwin-arm64   # macOS Apple Silicon
+# 产物在 dist/，自行上传/分发
+```
+
+日常 push/PR 还会自动跑测试（`.github/workflows/ci.yml`）。
+
+---
+
 ## 部署（Linux 云主机）
 
 **方式 A：单文件二进制（推荐，无需 Node）**
