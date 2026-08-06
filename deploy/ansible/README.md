@@ -25,6 +25,7 @@ vim inventory/production/hosts          # 换成真实 IP / 用户名
 
 # 2) 按需修改变量
 vim inventory/production/group_vars/all.yml
+#    - caddymanager_auth_token: "your-strong-password"   （设置初始密码；留空则自动生成）
 #    - caddymanager_reload_cmd: "systemctl reload caddy"   （caddy 由 systemd 管理时）
 #    - arm64 主机: caddymanager_binary_src 改成 dist/caddymanager-linux-arm64
 
@@ -43,7 +44,7 @@ ansible-playbook -i inventory/production/hosts playbook.yml
 | `caddymanager_caddy_bin` | `/usr/bin/caddy` | caddy 可执行文件 |
 | `caddymanager_caddyfile_path` | `/etc/caddy/Caddyfile` | 生成的 Caddyfile |
 | `caddymanager_reload_cmd` | 空 | 生效指令，如 `systemctl reload caddy` |
-| `caddymanager_auth_token` | 自动生成 | 访问令牌（`lookup('password')` 生成并保存在控制机） |
+| `caddymanager_auth_token` | 空 | **初始密码/访问令牌**：留空自动生成 32 位随机串（保存在控制机 `./credentials/caddymanager_token`）；**手动指定则部署时使用你设置的值**（也可用 `-e caddymanager_auth_token=xxx` 传入） |
 
 ## 特性
 - **幂等**：可重复执行，二进制/配置变更时自动重启服务

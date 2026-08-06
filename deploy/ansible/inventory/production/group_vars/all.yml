@@ -24,5 +24,7 @@ caddymanager_start_cmd: ""
 # 动态域名看门狗扫描间隔（毫秒）
 caddymanager_dns_watch_interval_ms: 5000
 
-# 访问令牌：留空自动生成 32 位随机串并保存在控制机 ./credentials/caddymanager_token
-caddymanager_auth_token: "{{ lookup('password', 'credentials/caddymanager_token chars=hexdigits length=32') }}"
+# 访问令牌（初始密码）：留空 = 自动生成 32 位随机串（保存在控制机 ./credentials/caddymanager_token）；
+# 也可手动指定，例如：
+#   caddymanager_auth_token: "your-strong-password"
+caddymanager_auth_token: "" 

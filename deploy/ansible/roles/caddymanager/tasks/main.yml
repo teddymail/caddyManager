@@ -1,4 +1,11 @@
 ---
+- name: 计算访问令牌（手动指定优先，留空则自动生成）
+  ansible.builtin.set_fact:
+    caddymanager_auth_token: >-
+      {{ caddymanager_auth_token | trim if caddymanager_auth_token
+         else lookup('password', 'credentials/caddymanager_token chars=hexdigits length=32') }}
+  no_log: true
+
 - name: 检查 Caddy 是否已安装
   ansible.builtin.command: "{{ caddymanager_caddy_bin }} version"
   register: caddy_version

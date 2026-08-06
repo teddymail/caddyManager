@@ -257,9 +257,11 @@ sudo bash deploy/install.sh
 ```bash
 node scripts/build.mjs bun-linux-x64
 vim deploy/ansible/inventory/production/hosts       # 改成你的云主机
-vim deploy/ansible/inventory/production/group_vars/all.yml
+vim deploy/ansible/inventory/production/group_vars/all.yml   # 设置初始密码等
 ansible-playbook -i deploy/ansible/inventory/production/hosts deploy/ansible/playbook.yml
 ```
+
+> **设置初始密码**：在 `group_vars/all.yml` 里填 `caddymanager_auth_token: "你的初始密码"`（或用 `-e caddymanager_auth_token=xxx` 传入）；**留空则自动生成** 32 位随机令牌（存控制机 `./credentials/caddymanager_token`，`no_log` 保护）。
 
 生产建议：`AUTH_TOKEN` 必设；`CADDY_RELOAD_CMD=systemctl reload caddy` 交给 systemd 管理 caddy。
 
