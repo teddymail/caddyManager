@@ -132,7 +132,7 @@ export function staticHandler(rootDir, { embedded = {} } = {}) {
     const embeddedBody = embedded[key];
     if (embeddedBody !== undefined) {
       const ext = path.extname(key).toLowerCase();
-      const cache = ext === '.html' ? 'no-cache' : 'public, max-age=3600';
+      const cache = 'no-cache';
       writeRes(req, res, 200, embeddedBody, MIME[ext] || 'text/plain; charset=utf-8', {
         'Cache-Control': cache,
       });
@@ -153,7 +153,7 @@ export function staticHandler(rootDir, { embedded = {} } = {}) {
     }
     if (!stat.isFile()) return sendError(req, res, 404, 'Not Found');
     const ext = path.extname(file).toLowerCase();
-    const cache = ext === '.html' ? 'no-cache' : 'public, max-age=3600';
+    const cache = 'no-cache';
     writeRes(req, res, 200, fs.readFileSync(file), MIME[ext] || 'application/octet-stream', {
       'Cache-Control': cache,
       'ETag': `"${stat.size}-${Math.floor(stat.mtimeMs)}"`,
