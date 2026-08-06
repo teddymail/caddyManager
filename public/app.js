@@ -185,9 +185,22 @@
   }
 
   // ---------- 预览 / 校验 / 应用 ----------
+  async function fetchAuthed(path) {
+    const headers = {};
+    const token = localStorage.getItem('cm_token') || '';
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(path, { headers });
+    if (res.status === 401) {
+      updateAuthBadge(false);
+      if (!$('#token-modal').open) openTokenModal(true);
+      throw new Error('未登录或令牌无效，请先输入令牌');
+    }
+    return res;
+  }
   async function showPreview() {
     try {
-      const text = await (await fetch('/api/preview')).text();
+      const res = await fetchAuthed('/api/preview');
+      const text = await res.text();
       $('#preview-content').textContent = text;
       $('#preview-modal').showModal();
     } catch (err) { toast(err.message, 'err'); }
