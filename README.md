@@ -3,6 +3,13 @@
 > 在云主机上**快速配置反向代理转发**、并让 Caddy **秒级生效重启**的 Web 管理服务（默认 8888 端口）。
 > 单文件二进制部署，目标机无需安装 Node。
 
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Language: JavaScript](https://img.shields.io/badge/language-JavaScript-yellow.svg)
+![Platform: Linux / macOS](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey.svg)
+![Node >= 18](https://img.shields.io/badge/Node-%3E%3D%2018-339933.svg)
+[![GitHub stars](https://img.shields.io/github/stars/teddymail/caddyManager)](https://github.com/teddymail/caddyManager/stargazers)
+[![GitHub last commit](https://img.shields.io/github/last-commit/teddymail/caddyManager)](https://github.com/teddymail/caddyManager)
+
 ---
 
 ## 解决什么痛点
@@ -36,6 +43,8 @@
 
 ### 🚀 快速代理转发配置 —— 网页/API 建规则，不用碰 Caddyfile
 
+> 架构与完整生效流程见下方 [架构与生效流程](#架构与生效流程)。
+
 中文 Web 面板（或 REST API）里填一张表，就是一条转发规则：
 
 | 字段 | 示例 | 说明 |
@@ -55,6 +64,36 @@
 
 ---
 
+## 架构与生效流程
+
+```mermaid
+flowchart LR
+  U["浏览器 / 运维人员"] -->|"配置·启停·应用"| CM["Caddy Manager :8888<br/>Web 面板 + REST API"]
+  CM <--> DB["(data/rules.json<br/>转发规则)"]
+  CM -->|"应用配置"| GEN["生成 Caddyfile<br/>fmt → validate → 原子写盘"]
+  GEN -->|"替换配置"| CF["/etc/caddy/Caddyfile"]
+  CF -->|"热加载生效"| CD["Caddy :80/:443"]
+  CD --> BE1["后端服务 A<br/>http://127.0.0.1:8080"]
+  CD --> BE2["后端服务 B<br/>http://10.0.0.2:9000"]
+```
+
+**应用配置 → 秒级生效链路：**
+
+```mermaid
+flowchart TD
+  A["点击「🚀 应用配置」"] --> B["生成 Caddyfile"]
+  B --> C["caddy fmt 规范化"]
+  C --> D{"caddy validate 校验"}
+  D -- "失败" --> X["⛔ 中止，绝不写盘<br/>线上配置保持不变"]
+  D -- "通过" --> E["原子写盘（tmp + rename）"]
+  E --> F["自动生效"]
+  F --> F1["CADDY_RELOAD_CMD<br/>自定义生效命令"]
+  F --> F2["admin API 热加载<br/>POST /load · 秒级 · 不重启"]
+  F --> F3["caddy reload"]
+  F --> F4["caddy start"]
+  F1 & F2 & F3 & F4 --> G["✅ 新配置立即生效<br/>不中断现有连接"]
+```
+
 ## 30 秒上手
 
 ```bash
@@ -70,6 +109,10 @@ node scripts/build.mjs bun-linux-x64 && scp dist/caddymanager-linux-x64 root@云
 3. 点「🚀 应用配置」→ **Caddy 立即重新加载生效** ✅
 
 ---
+
+## 界面预览
+
+![Caddy Manager 管理面板](docs/screenshot-main.png)
 
 ## 核心能力总览
 
