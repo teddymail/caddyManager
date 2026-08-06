@@ -15,7 +15,7 @@
     const res = await fetch(path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
     if (res.status === 401) {
       openTokenModal(true);
-      throw new Error('未授权，请先设置访问 Token');
+      throw new Error('令牌不正确或已失效，请重新输入');
     }
     let data = null;
     try { data = await res.json(); } catch { /* non-json */ }
@@ -235,6 +235,8 @@
     const has = !!localStorage.getItem('cm_token');
     if (!force && !has) { toast('当前服务未开启鉴权'); return; }
     $('#f-token').value = localStorage.getItem('cm_token') || '';
+    const errEl = $('#token-error');
+    if (errEl) errEl.classList.add('hidden');
     $('#token-status').textContent = has
       ? '✅ 令牌已保存在本浏览器，之后操作无需重复输入；如需更换请直接修改后保存。'
       : '服务已强制鉴权：请输入令牌（服务器启动日志可见，或由管理员设置 AUTH_TOKEN）。只需输入一次，浏览器会记住。';
@@ -243,17 +245,31 @@
 
   async function saveToken() {
     const v = $('#f-token').value.trim();
-    if (v) localStorage.setItem('cm_token', v);
-    else localStorage.removeItem('cm_token');
-    $('#token-modal').close();
-    updateAuthBadge();
-    toast(v ? 'Token 已保存，正在加载…' : '已清除 Token');
-    if (v) {
-      try {
-        meta = await api('/api/meta');
-        await Promise.all([loadRules(), refreshStatus()]);
-      } catch (err) { toast(err.message, 'err'); }
+    const errEl = $('#token-error');
+    if (errEl) errEl.classList.add('hidden');
+    if (!v) {
+      localStorage.removeItem('cm_token');
+      $('#token-modal').close();
+      updateAuthBadge();
+      toast('已清除 Token');
+      return;
     }
+    // 先向后端验证令牌，通过才保存
+    try {
+      const res = await fetch('/api/meta', { headers: { Authorization: `Bearer ${v}` } });
+      if (res.status === 401) {
+        errEl.textContent = '❌ 令牌不正确或已失效，请核对后重新输入';
+        errEl.classList.remove('hidden');
+        return; // 不关弹窗，让用户直接改
+      }
+      if (!res.ok) throw new Error(`验证失败 (HTTP ${res.status})`);
+      localStorage.setItem('cm_token', v);
+      $('#token-modal').close();
+      updateAuthBadge();
+      toast('Token 已保存，正在加载…');
+      meta = await api('/api/meta');
+      await Promise.all([loadRules(), refreshStatus()]);
+    } catch (err) { toast(err.message, 'err'); }
   }
 
   // ---------- Caddyfile 路径设置 ----------

@@ -153,6 +153,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); }
 .check input { width: auto; margin: 0; }
 .req { color: var(--danger); }
 
+.token-error { color: var(--danger); font-size: 13px; font-weight: 600; margin: 0; }
+
 .cfg-candidates { display: flex; flex-direction: column; gap: 6px; margin-bottom: 6px; }
 .cfg-cand { text-align: left; font-size: 12px; word-break: break-all; }
 .cfg-cand-active { border-color: var(--success); color: var(--success); }
