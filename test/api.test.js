@@ -267,3 +267,27 @@ test('冲突：启用与已有启用的规则冲突时被拒绝', async () => {
   assert.match(tog.data.error, /冲突/);
   assert.equal(x.status, 201);
 });
+
+// ---------- Caddy 日志查看 ----------
+test('logs: 读取并解析 access 日志', async () => {
+  const logFile = path.join(tmp, 'access.log');
+  const lines = [
+    JSON.stringify({ ts: 1786000000.123, level: 'info', status: 200, duration: 0.012, request: { method: 'GET', uri: '/api/hello', host: 'api.example.com', remote_ip: '1.2.3.4' } }),
+    JSON.stringify({ ts: 1786000001.5, level: 'info', status: 502, duration: 0.5, request: { method: 'POST', uri: '/x', host: 'api.example.com' } }),
+    'not-json-line',
+  ];
+  fs.writeFileSync(logFile, lines.join('\n') + '\n', 'utf8');
+  config.caddyAccessLog = logFile;
+  config.caddyErrorLog = path.join(tmp, 'error.log');
+  const r = await call('GET', '/api/logs?type=access&lines=50');
+  assert.equal(r.status, 200);
+  assert.ok(r.data.entries.length >= 3);
+  const parsed = r.data.entries.filter((e) => e.parsed);
+  assert.ok(parsed.length >= 2);
+  const first = parsed.find((e) => e.request.uri === '/api/hello');
+  assert.equal(first.status, 200);
+  assert.equal(first.request.host, 'api.example.com');
+  // 关键词过滤
+  const f = await call('GET', '/api/logs?type=access&q=502');
+  assert.ok(f.data.entries.every((e) => e.raw.includes('502')));
+});

@@ -320,6 +320,55 @@
     } catch (err) { toast(err.message, 'err'); }
   }
 
+  // ---------- Caddy 日志查看 ----------
+  let logsTimer = null;
+  function fmtTs(ts) {
+    if (!ts) return '';
+    try { return new Date(ts * 1000).toLocaleString('zh-CN', { hour12: false }); } catch { return String(ts); }
+  }
+  async function loadLogs() {
+    const type = $('#logs-type').value;
+    const q = $('#logs-q').value.trim();
+    const lines = $('#logs-lines').value;
+    const c = await api(`/api/logs?type=${type}&lines=${lines}&q=${encodeURIComponent(q)}`);
+    $('#logs-file').textContent = `日志文件: ${c.file}（显示 ${c.entries.length} 条）`;
+    const wrap = $('#logs-list');
+    wrap.innerHTML = '';
+    if (!c.entries.length) {
+      wrap.innerHTML = '<div class="empty"><p>暂无日志，请先「🚀 应用配置」让 Caddy 写入日志</p></div>';
+      return;
+    }
+    for (const e of c.entries) {
+      const row = document.createElement('div');
+      row.className = 'log-row';
+      if (e.parsed) {
+        const p = e.parsed;
+        if (type === 'error') {
+          const lv = (p.level || 'info').toLowerCase();
+          row.innerHTML = `<span class="log-ts">${fmtTs(p.ts)}</span> <span class="log-level lv-${lv}">${lv.toUpperCase()}</span> <span class="log-msg">${esc(p.msg || p.error || e.raw)}</span>`;
+          if (lv === 'error' || lv === 'warn') row.classList.add('log-err');
+        } else {
+          const st = p.status;
+          const cls = st >= 500 ? 'st-5xx' : st >= 400 ? 'st-4xx' : st >= 300 ? 'st-3xx' : 'st-2xx';
+          const dur = p.duration ? `${(p.duration * 1000).toFixed(0)}ms` : '';
+          row.innerHTML = `<span class="log-ts">${fmtTs(p.ts)}</span> <span class="log-status ${cls}">${st || '?'}</span> <span class="log-req">${esc(p.request.method || '')} ${esc(p.request.uri || '')}</span> <span class="log-host">${esc(p.request.host || '')}</span> <span class="log-dur">${dur}</span>`;
+        }
+      } else {
+        row.innerHTML = `<span class="log-raw">${esc(e.raw)}</span>`;
+      }
+      wrap.appendChild(row);
+    }
+    wrap.scrollTop = wrap.scrollHeight;
+  }
+  function openLogs() {
+    $('#logs-modal').showModal();
+    loadLogs().catch((e) => toast(e.message, 'err'));
+    clearInterval(logsTimer);
+    logsTimer = setInterval(() => {
+      if ($('#logs-auto').checked && $('#logs-modal').open) loadLogs().catch(() => {});
+    }, 2000);
+  }
+
   // ---------- 刷新 DNS ----------
   async function refreshDns() {
     try {
@@ -357,6 +406,12 @@
     $('#btn-preview-validate').addEventListener('click', validateOnly);
     $('#btn-preview-apply').addEventListener('click', applyNow);
     $('#btn-refresh-dns').addEventListener('click', refreshDns);
+    $('#btn-logs').addEventListener('click', openLogs);
+    $('#btn-logs-refresh').addEventListener('click', () => loadLogs().catch((e) => toast(e.message, 'err')));
+    $('#logs-type').addEventListener('change', () => loadLogs().catch((e) => toast(e.message, 'err')));
+    $('#logs-lines').addEventListener('change', () => loadLogs().catch((e) => toast(e.message, 'err')));
+    $('#logs-q').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadLogs().catch((x) => toast(x.message, 'err')); });
+    $('#logs-modal').addEventListener('close', () => clearInterval(logsTimer));
     $('#btn-settings').addEventListener('click', openSettings);
     $('#btn-cfg-save').addEventListener('click', saveCfgPath);
     $('#btn-cfg-auto').addEventListener('click', () => { $('#f-cfgpath').value = ''; saveCfgPath(); });

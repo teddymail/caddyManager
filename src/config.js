@@ -67,6 +67,17 @@ export function loadConfig(env = process.env) {
   const settings = loadSettings(dataDir);
   const candidates = detectCaddyfileCandidates(dataDir);
 
+  // Caddy 日志路径（自动定位）：/var/log/caddy 可写则用系统路径，否则回退数据目录
+  const logDir = (() => {
+    try { fs.accessSync('/var/log/caddy', fs.constants.W_OK); return '/var/log/caddy'; } catch { return dataDir; }
+  })();
+  const caddyAccessLog = env.CADDY_ACCESS_LOG
+    ? path.resolve(env.CADDY_ACCESS_LOG)
+    : path.join(logDir, 'access.log');
+  const caddyErrorLog = env.CADDY_ERROR_LOG
+    ? path.resolve(env.CADDY_ERROR_LOG)
+    : path.join(logDir, 'error.log');
+
   // 鉴权（默认强制开启）：AUTH_TOKEN > 已持久化 token > 自动生成并持久化
   let authToken;
   let authTokenSource;
@@ -111,6 +122,9 @@ export function loadConfig(env = process.env) {
     seedExamples: env.SEED_EXAMPLES === '1' || env.SEED_EXAMPLES === 'true',
     dnsWatchIntervalMs: Number.parseInt(env.DNS_WATCH_INTERVAL_MS, 10) || 5000,
     quiet: env.QUIET === '1' || env.QUIET === 'true',
+    logsEnabled: env.CADDY_LOGS !== '0' && env.CADDY_LOGS !== 'false',
+    caddyAccessLog,
+    caddyErrorLog,
     settings,
     caddyfilePathSource,
     caddyfilePathCandidates: candidates,

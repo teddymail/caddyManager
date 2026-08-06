@@ -114,6 +114,16 @@ node scripts/build.mjs bun-linux-x64 && scp dist/caddymanager-linux-x64 root@云
 
 ![Caddy Manager 管理面板](docs/screenshot-main.png)
 
+## 日志查看（转发匹配 + 错误日志）
+
+「应用配置」生成的 Caddyfile 会自动注入日志配置：每个站点写**转发匹配日志**（access），全局写**错误日志**（error）。面板点「📄 日志」即可查看：
+
+- **转发匹配日志**：时间 / 状态码（2xx 绿、3xx 蓝、4xx 橙、5xx 红）/ 方法 / URI / 域名 / 耗时 —— 方便排查"哪个请求转发到了哪里、是否成功"
+- **错误日志**：WARN / ERROR 级别，含上游连接失败等详细错误
+- 支持：类型切换、关键词过滤、行数选择（50~1000）、2 秒自动刷新
+
+日志文件路径自动定位（`/var/log/caddy` 可写则用系统路径，否则 `data/`），也可用环境变量 `CADDY_ACCESS_LOG` / `CADDY_ERROR_LOG` 指定；`CADDY_LOGS=0` 可关闭注入。
+
 ## 核心能力总览
 
 | 能力 | 说明 |
@@ -122,6 +132,7 @@ node scripts/build.mjs bun-linux-x64 && scp dist/caddymanager-linux-x64 root@云
 | 🚀 快速转发配置 | 中文面板 / REST API 建规则，自动生成规范 Caddyfile，支持启停、路径、TLS、健康检查 |
 | 🔄 动态域名跟随 | Caddy 原生 `dynamic a` 定时刷新（无需重载）+ 管理器看门狗自动改 IP 并热重载 |
 | 🌐 负载均衡 | 多上游自动 `lb_policy round_robin` |
+| 📄 日志查看 | 面板直接看 Caddy **转发匹配日志**（方法/URI/状态/耗时）与**错误日志**（上游连接失败等），支持过滤/自动刷新 |
 | 📦 单文件二进制 | Bun 交叉编译 Linux x64/arm64 自包含 ELF，目标机零依赖 |
 | 📦 Ansible 部署 | 拷一个二进制 + systemd + 健康检查，幂等可重复执行 |
 | 🚀 高性能 | 响应缓存、Gzip、状态缓存、写盘合并；实测 ~1.2 万 QPS / 0.08ms |
@@ -192,6 +203,9 @@ node src/server.js          # 默认 8888 端口
 | `AUTH_TOKEN` | 自动生成 | API Bearer Token；**留空自动生成** 32 位随机令牌（打印在启动日志、持久化到 `data/settings.json`） |
 | `GLOBAL_TLS_EMAIL` | 空 | 全局 ACME 邮箱 |
 | `DNS_WATCH_INTERVAL_MS` | `5000` | 看门狗扫描间隔 |
+| `CADDY_ACCESS_LOG` | 自动定位 | Caddy 转发匹配日志文件（默认 `/var/log/caddy/access.log`，不可写则 `data/access.log`） |
+| `CADDY_ERROR_LOG` | 自动定位 | Caddy 错误日志文件（默认 `/var/log/caddy/error.log`，不可写则 `data/error.log`） |
+| `CADDY_LOGS` | `1` | `0` 时不在生成的 Caddyfile 中注入日志配置 |
 | `QUIET` | 空 | `1` 时关闭请求日志，提升吞吐 |
 
 ### REST API

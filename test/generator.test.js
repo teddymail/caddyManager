@@ -112,3 +112,24 @@ test('精确域名规则排在通配符规则之前', () => {
   assert.ok(exactIdx !== -1 && wildIdx !== -1);
   assert.ok(exactIdx < wildIdx, '精确规则必须先生成');
 });
+
+test('配置日志路径后注入 access/error 日志', () => {
+  const out = generateCaddyfile([{ ...base }], {
+    globalTlsEmail: '',
+    caddyAccessLog: '/var/log/caddy/access.log',
+    caddyErrorLog: '/var/log/caddy/error.log',
+    logsEnabled: true,
+  });
+  assert.match(out, /output file \/var\/log\/caddy\/error\.log/);
+  assert.match(out, /output file \/var\/log\/caddy\/access\.log/);
+  assert.match(out, /format json/);
+});
+
+test('logsEnabled=false 时不注入日志', () => {
+  const out = generateCaddyfile([{ ...base }], {
+    caddyAccessLog: '/var/log/caddy/access.log',
+    caddyErrorLog: '/var/log/caddy/error.log',
+    logsEnabled: false,
+  });
+  assert.doesNotMatch(out, /output file/);
+});

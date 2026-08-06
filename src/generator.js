@@ -29,10 +29,18 @@ export function generateCaddyfile(rules, opts = {}) {
   lines.push(`# 生成时间: ${new Date().toISOString()}`);
 
   const globalEmail = (opts.globalTlsEmail || '').trim();
-  if (globalEmail) {
+  const logsEnabled = opts.logsEnabled !== false;
+  if (globalEmail || (logsEnabled && opts.caddyErrorLog)) {
     lines.push('');
     lines.push('{');
-    lines.push(`    email ${quote(globalEmail)}`);
+    if (globalEmail) lines.push(`    email ${quote(globalEmail)}`);
+    if (logsEnabled && opts.caddyErrorLog) {
+      lines.push('    log {');
+      lines.push(`        output file ${quote(opts.caddyErrorLog)}`);
+      lines.push('        format json');
+      lines.push('        level WARN');
+      lines.push('    }');
+    }
     lines.push('}');
   }
 
@@ -56,6 +64,13 @@ export function generateCaddyfile(rules, opts = {}) {
     lines.push(`${siteAddresses(rule)} {`);
     if (rule.tls === 'internal') {
       lines.push('    tls internal');
+    }
+    if (logsEnabled && opts.caddyAccessLog) {
+      lines.push('    log {');
+      lines.push(`        output file ${quote(opts.caddyAccessLog)}`);
+      lines.push('        format json');
+      lines.push('        level INFO');
+      lines.push('    }');
     }
     if (rule.extra) {
       for (const l of String(rule.extra).split('\n')) {

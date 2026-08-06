@@ -7,6 +7,7 @@ import { generateCaddyfile } from './generator.js';
 import { applyConfig, caddyInstalled, caddyRunning, detectRunningCaddyConfig } from './caddy.js';
 import { exampleRules, defaultRule, deriveUpstreamHostPort } from './util.js';
 import { saveSettings, detectCaddyfileCandidates } from './config.js';
+import { readLogTail, parseCaddyLogLine } from './logs.js';
 import { embeddedAssets } from './assets.generated.js';
 
 export function createApp(config, { store } = {}) {
@@ -110,6 +111,21 @@ export function createApp(config, { store } = {}) {
       caddyfilePath: config.caddyfilePath,
       source: config.caddyfilePathSource,
     });
+  });
+
+  // ---------- Caddy 日志查看 ----------
+  router.get('/api/logs', async (req, res, ctx) => {
+    const sp = ctx.url.searchParams;
+    const type = sp.get('type') === 'error' ? 'error' : 'access';
+    const lines = Math.min(Math.max(Number(sp.get('lines')) || 200, 1), 2000);
+    const q = (sp.get('q') || '').trim().toLowerCase();
+    const file = type === 'error' ? config.caddyErrorLog : config.caddyAccessLog;
+    const { ok, error, lines: rawLines } = await readLogTail(file, lines);
+    if (!ok) return sendJson(req, res, 200, { ok: false, error, type, file, entries: [] });
+    const entries = rawLines
+      .map((raw) => parseCaddyLogLine(raw))
+      .filter((e) => !q || (e.raw || '').toLowerCase().includes(q));
+    sendJson(req, res, 200, { ok: true, type, file, entries });
   });
 
   router.get('/api/preview', (req, res) => {
