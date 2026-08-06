@@ -1,5 +1,6 @@
 node_modules/
 data/rules.json
+data/settings.json
 data/Caddyfile
 data/*.tmp
 *.log

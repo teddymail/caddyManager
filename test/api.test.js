@@ -171,3 +171,31 @@ test('refresh-dns：manager 模式规则自动解析并写回 resolvedIps', asyn
   const r2 = await call('POST', '/api/refresh-dns');
   assert.equal(r2.data.changed.length, 0);
 });
+
+// ---------- Caddyfile 目标路径：自动定位 + 手动指定 ----------
+test('config: 读取当前路径并手动指定新路径', async () => {
+  const g = await call('GET', '/api/config');
+  assert.equal(g.status, 200);
+  assert.ok(g.data.caddyfilePath);
+  assert.ok(Array.isArray(g.data.candidates) && g.data.candidates.length > 0);
+
+  const custom = path.join(tmp, 'custom', 'Caddyfile');
+  const r = await call('PUT', '/api/config/caddyfile-path', { path: custom });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.caddyfilePath, custom);
+  assert.equal(r.data.source, 'manual');
+
+  const g2 = await call('GET', '/api/config');
+  assert.equal(g2.data.source, 'manual');
+  assert.equal(g2.data.caddyfilePath, custom);
+
+  // 恢复自动定位
+  const r2 = await call('PUT', '/api/config/caddyfile-path', { path: '' });
+  assert.equal(r2.status, 200);
+  assert.notEqual(r2.data.source, 'manual');
+});
+
+test('config: 相对路径被拒绝', async () => {
+  const r = await call('PUT', '/api/config/caddyfile-path', { path: 'relative/path' });
+  assert.equal(r.status, 400);
+});

@@ -238,6 +238,52 @@
     toast(v ? 'Token 已保存' : '已清除 Token');
   }
 
+  // ---------- Caddyfile 路径设置 ----------
+  const SOURCE_LABEL = {
+    env: '由环境变量指定',
+    manual: '手动指定',
+    auto: '自动定位',
+    default: '默认路径',
+    'running-caddy': '运行中的 Caddy',
+  };
+  async function openSettings() {
+    try {
+      const c = await api('/api/config');
+      $('#cfg-path').textContent = c.caddyfilePath;
+      const src = $('#cfg-source');
+      src.textContent = SOURCE_LABEL[c.source] || c.source;
+      src.className = `tag ${c.source === 'manual' || c.source === 'env' ? 'tag-tls-internal' : 'tag-dns'}`;
+      $('#f-cfgpath').value = c.source === 'manual' ? c.caddyfilePath : '';
+      const wrap = $('#cfg-candidates');
+      wrap.innerHTML = '';
+      for (const cand of c.candidates) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'btn btn-ghost cfg-cand';
+        if (cand.active) b.classList.add('cfg-cand-active');
+        b.textContent = `${cand.path}（${SOURCE_LABEL[cand.source] || cand.source}）`;
+        b.title = '点击设为当前目标路径';
+        b.addEventListener('click', async () => {
+          await api('/api/config/caddyfile-path', { method: 'PUT', body: { path: cand.path } });
+          toast('已选择，应用配置将写入该路径');
+          await openSettings();
+          await refreshStatus();
+        });
+        wrap.appendChild(b);
+      }
+      $('#settings-modal').showModal();
+    } catch (err) { toast(err.message, 'err'); }
+  }
+
+  async function saveCfgPath() {
+    try {
+      await api('/api/config/caddyfile-path', { method: 'PUT', body: { path: $('#f-cfgpath').value.trim() } });
+      $('#settings-modal').close();
+      toast('已保存目标路径');
+      await refreshStatus();
+    } catch (err) { toast(err.message, 'err'); }
+  }
+
   // ---------- 刷新 DNS ----------
   async function refreshDns() {
     try {
@@ -275,6 +321,9 @@
     $('#btn-preview-validate').addEventListener('click', validateOnly);
     $('#btn-preview-apply').addEventListener('click', applyNow);
     $('#btn-refresh-dns').addEventListener('click', refreshDns);
+    $('#btn-settings').addEventListener('click', openSettings);
+    $('#btn-cfg-save').addEventListener('click', saveCfgPath);
+    $('#btn-cfg-auto').addEventListener('click', () => { $('#f-cfgpath').value = ''; saveCfgPath(); });
     $('#f-dnsmode').addEventListener('change', toggleDnsFields);
     $('#btn-token').addEventListener('click', () => openTokenModal());
     $('#btn-token-save').addEventListener('click', saveToken);

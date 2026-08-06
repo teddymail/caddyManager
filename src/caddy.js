@@ -89,6 +89,17 @@ export async function adminReload(content) {
   }
 }
 
+/** 探测正在运行的 Caddy 进程实际使用的配置文件（ps 查找 --config 参数）。 */
+export async function detectRunningCaddyConfig() {
+  const r = await run('ps', ['-axo', 'command=']);
+  for (const line of (r.stdout || '').split('\n')) {
+    if (!/caddy/i.test(line) || !/--config/.test(line)) continue;
+    const m = line.match(/--config[=\s]+(\S+)/);
+    if (m) return m[1];
+  }
+  return null;
+}
+
 function writeTemp(content) {
   const tmp = path.join(os.tmpdir(), `caddymanager-${process.pid}-${Date.now()}.conf`);
   fs.writeFileSync(tmp, content, 'utf8');

@@ -4,8 +4,9 @@ import zlib from 'node:zlib';
 import { Router, sendJson, sendText, sendError, readBody, staticHandler } from './router.js';
 import { Store } from './store.js';
 import { generateCaddyfile } from './generator.js';
-import { applyConfig, caddyInstalled, caddyRunning } from './caddy.js';
+import { applyConfig, caddyInstalled, caddyRunning, detectRunningCaddyConfig } from './caddy.js';
 import { exampleRules, defaultRule, deriveUpstreamHostPort } from './util.js';
+import { saveSettings, detectCaddyfileCandidates } from './config.js';
 import { embeddedAssets } from './assets.generated.js';
 
 export function createApp(config, { store } = {}) {
@@ -63,6 +64,51 @@ export function createApp(config, { store } = {}) {
         dynamicCount: app.store.list().filter((r) => r.dnsMode && r.dnsMode !== 'off').length,
         watchEnabled: Boolean(config.dnsWatchIntervalMs),
       },
+    });
+  });
+
+  // ---------- Caddyfile 目标路径：自动定位 + 手动指定 ----------
+  router.get('/api/config', async (req, res) => {
+    const running = await detectRunningCaddyConfig();
+    const candidates = config.caddyfilePathCandidates.map((c) => ({
+      ...c,
+      active: config.caddyfilePath === c.path,
+    }));
+    if (running && !candidates.some((c) => c.path === running)) {
+      candidates.unshift({ path: running, source: 'running-caddy', active: config.caddyfilePath === running });
+    }
+    sendJson(req, res, 200, {
+      ok: true,
+      caddyfilePath: config.caddyfilePath,
+      source: config.caddyfilePathSource,
+      envOverridden: Boolean(process.env.CADDYFILE_PATH),
+      runningCaddyConfig: running,
+      candidates,
+    });
+  });
+
+  router.put('/api/config/caddyfile-path', async (req, res) => {
+    if (process.env.CADDYFILE_PATH) {
+      return sendError(req, res, 400, '当前路径由环境变量 CADDYFILE_PATH 指定，请修改环境变量或先取消该变量');
+    }
+    const body = await readBody(req);
+    const raw = String((body && body.path) || '').trim();
+    if (raw && !path.isAbsolute(raw)) return sendError(req, res, 400, '路径必须是绝对路径');
+    const next = raw ? path.resolve(raw) : '';
+    if (next) {
+      config.caddyfilePath = next;
+      config.caddyfilePathSource = 'manual';
+    } else {
+      const auto = detectCaddyfileCandidates(config.dataDir);
+      config.caddyfilePathCandidates = auto;
+      config.caddyfilePath = auto[0].path;
+      config.caddyfilePathSource = auto[0].source;
+    }
+    saveSettings(config.dataDir, { caddyfilePath: next });
+    sendJson(req, res, 200, {
+      ok: true,
+      caddyfilePath: config.caddyfilePath,
+      source: config.caddyfilePathSource,
     });
   });
 

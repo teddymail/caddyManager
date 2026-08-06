@@ -1,5 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 
 /**
  * 服务配置加载。所有配置项均可通过环境变量覆盖。
@@ -18,21 +19,65 @@ import fs from 'node:fs';
  *   SEED_EXAMPLES   首次启动时写入示例规则（1=是）
  *   DNS_WATCH_INTERVAL_MS 动态 DNS 看门狗扫描间隔（毫秒，默认 5000；manager 模式规则按各自 dnsInterval 节流）
  */
+/** 读取运行时设置（面板手动指定的配置），损坏时忽略。 */
+export function loadSettings(dataDir) {
+  try {
+    const f = path.join(dataDir, 'settings.json');
+    if (fs.existsSync(f)) {
+      const parsed = JSON.parse(fs.readFileSync(f, 'utf8'));
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    }
+  } catch { /* 忽略损坏文件 */ }
+  return {};
+}
+
+/** 持久化运行时设置（原子写盘）。 */
+export function saveSettings(dataDir, settings) {
+  fs.mkdirSync(dataDir, { recursive: true });
+  const file = path.join(dataDir, 'settings.json');
+  const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
+  fs.writeFileSync(tmp, JSON.stringify(settings, null, 2) + '\n', 'utf8');
+  fs.renameSync(tmp, file);
+}
+
+function writableDir(dir) {
+  try { fs.accessSync(dir, fs.constants.W_OK); return true; } catch { return false; }
+}
+
+/** 自动定位 Caddyfile 候选（按优先级）。 */
+export function detectCaddyfileCandidates(dataDir) {
+  const out = [];
+  if (process.platform !== 'win32') {
+    if (fs.existsSync('/etc/caddy/Caddyfile') || (fs.existsSync('/etc/caddy') && writableDir('/etc/caddy'))) {
+      out.push({ path: '/etc/caddy/Caddyfile', source: 'auto' });
+    }
+  }
+  try {
+    const user = path.join(os.homedir(), '.config', 'caddy', 'Caddyfile');
+    if (fs.existsSync(user)) out.push({ path: user, source: 'auto' });
+  } catch { /* 跳过 */ }
+  out.push({ path: path.join(dataDir, 'Caddyfile'), source: 'default' });
+  return out;
+}
+
 export function loadConfig(env = process.env) {
   const cwd = process.cwd();
   const dataDir = path.resolve(env.DATA_DIR || path.join(cwd, 'data'));
+  const settings = loadSettings(dataDir);
+  const candidates = detectCaddyfileCandidates(dataDir);
 
-  let caddyfilePath = env.CADDYFILE_PATH
-    ? path.resolve(env.CADDYFILE_PATH)
-    : path.join(dataDir, 'Caddyfile');
-  if (!env.CADDYFILE_PATH && process.platform !== 'win32') {
-    // 生产环境默认写入 /etc/caddy/Caddyfile（可写时）
-    try {
-      fs.accessSync('/etc/caddy', fs.constants.W_OK);
-      caddyfilePath = '/etc/caddy/Caddyfile';
-    } catch {
-      // 不可写则回退到数据目录
-    }
+  // 优先级：环境变量 > 面板手动设置 > 自动定位
+  let caddyfilePath;
+  let caddyfilePathSource;
+  if (env.CADDYFILE_PATH) {
+    caddyfilePath = path.resolve(env.CADDYFILE_PATH);
+    caddyfilePathSource = 'env';
+  } else if (settings.caddyfilePath) {
+    caddyfilePath = path.resolve(settings.caddyfilePath);
+    caddyfilePathSource = 'manual';
+  } else {
+    caddyfilePath = candidates[0].path;
+    caddyfilePathSource = candidates[0].source;
   }
 
   return {
@@ -49,6 +94,9 @@ export function loadConfig(env = process.env) {
     seedExamples: env.SEED_EXAMPLES === '1' || env.SEED_EXAMPLES === 'true',
     dnsWatchIntervalMs: Number.parseInt(env.DNS_WATCH_INTERVAL_MS, 10) || 5000,
     quiet: env.QUIET === '1' || env.QUIET === 'true',
+    settings,
+    caddyfilePathSource,
+    caddyfilePathCandidates: candidates,
   };
 }
 

@@ -165,7 +165,17 @@ shop.example.com {
 node src/server.js          # 默认 8888 端口
 ```
 
-首次运行自动创建 `data/rules.json`；`/etc/caddy` 可写时生成目标默认为 `/etc/caddy/Caddyfile`，否则为 `data/Caddyfile`。
+首次运行自动创建 `data/rules.json`。
+
+### Caddyfile 目标路径（自动定位 + 手动指定）
+
+生成的目标 Caddyfile 路径按优先级自动定位：
+
+1. 环境变量 `CADDYFILE_PATH`（最高优先，面板不可改）
+2. 面板 ⚙ 设置里手动指定的绝对路径（持久化到 `data/settings.json`）
+3. 自动定位：正在运行的 Caddy 进程 `--config` 参数 → `/etc/caddy/Caddyfile` → `~/.config/caddy/Caddyfile` → `data/Caddyfile`
+
+面板「⚙ 设置」里可查看当前路径、来源（环境变量/手动/自动/默认）和全部候选，**点击候选即可切换，或手动输入绝对路径**；留空保存即恢复自动定位。接口：`GET /api/config`、`PUT /api/config/caddyfile-path`。
 
 ### 环境变量
 
@@ -176,7 +186,7 @@ node src/server.js          # 默认 8888 端口
 | `DATA_DIR` | `./data` | 数据目录 |
 | `RULES_FILE` | `<DATA_DIR>/rules.json` | 规则存储文件 |
 | `CADDY_BIN` | `caddy` | caddy 可执行文件 |
-| `CADDYFILE_PATH` | `/etc/caddy/Caddyfile`（可写时） | 生成的目标 Caddyfile |
+| `CADDYFILE_PATH` | 自动定位 | 生成的目标 Caddyfile；**留空自动定位**：`/etc/caddy/Caddyfile` → `~/.config/caddy/Caddyfile` → `data/Caddyfile`，也可在面板 ⚙ 设置里手动指定 |
 | `CADDY_RELOAD_CMD` | 空 | 自定义生效命令，如 `systemctl reload caddy`（优先于 admin API / caddy reload） |
 | `CADDY_START_CMD` | 空 | 自定义启动命令，如 `systemctl restart caddy` |
 | `AUTH_TOKEN` | 空 | API Bearer Token（生产必设） |
