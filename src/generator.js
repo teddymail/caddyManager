@@ -105,11 +105,3 @@ export function generateCaddyfile(rules, opts = {}) {
   return lines.join('\n');
 }
 
-/** 生成用于预览/校验的示例配置片段（不含真实规则）。 */
-export function previewSnippet() {
-  return [
-    'example.com {',
-    '    reverse_proxy http://127.0.0.1:8080',
-    '}',
-  ].join('\n');
-}

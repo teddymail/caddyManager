@@ -262,7 +262,6 @@ export function createApp(config, { store } = {}) {
   };
 
   // ---------- DNS 看门狗（后台守护，供 server.js 启动） ----------
-  appHandler.store = app.store;
   appHandler.refreshDynamicRules = refreshDynamicRules;
   appHandler.startDnsWatcher = () => {
     if (appHandler._dnsTimer) return appHandler._dnsTimer;

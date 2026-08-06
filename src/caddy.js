@@ -33,25 +33,24 @@ export function run(cmd, args = [], { timeoutMs = 30000, cwd } = {}) {
 }
 
 // ---------- 状态缓存（避免高频轮询反复 spawn 进程） ----------
-const statusCache = { at: 0, ttl: 5000, version: null, installed: false, running: false };
+const statusCache = { at: 0, ttl: 5000, version: null, running: false };
 
 /** caddy 是否已安装（带 5s 缓存）。 */
-export async function caddyInstalled(bin, { noCache = false } = {}) {
+export async function caddyInstalled(bin) {
   const now = Date.now();
-  if (!noCache && statusCache.at && now - statusCache.at < statusCache.ttl) {
+  if (statusCache.at && now - statusCache.at < statusCache.ttl) {
     return statusCache.version;
   }
   const r = await run(bin, ['version']);
-  statusCache.installed = r.code === 0;
   statusCache.version = r.code === 0 ? r.stdout.trim() : null;
   statusCache.at = now;
   return statusCache.version;
 }
 
 /** caddy 是否正在运行：优先探测 admin API（localhost:2019），其次 pgrep。带缓存。 */
-export async function caddyRunning(bin, { noCache = false } = {}) {
+export async function caddyRunning(bin) {
   const now = Date.now();
-  if (!noCache && statusCache.at && now - statusCache.at < statusCache.ttl) {
+  if (statusCache.at && now - statusCache.at < statusCache.ttl) {
     return statusCache.running;
   }
   let running = false;
