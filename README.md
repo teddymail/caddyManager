@@ -1,28 +1,94 @@
-# Caddy Manager
+# Caddy Manager · Caddy 转发配置管理
 
-一个运行在 **8888 端口** 的 Caddy 反向代理配置管理服务：通过 Web 面板 / REST API 统一管理「所有经过云主机 Caddy 代理的后端服务」，一键**生成 → 校验 → 替换 → 热生效** Caddy 配置，并内置**动态域名 IP 自动跟随机制**，解决「后端动态域名 IP 已变、Caddy 上游还指向旧 IP 导致连不上」的问题。
-
-零第三方依赖（仅用 Node.js 内置模块），Node >= 18 即可运行。
+> 在云主机上**快速配置反向代理转发**、并让 Caddy **秒级生效重启**的 Web 管理服务（默认 8888 端口）。
+> 单文件二进制部署，目标机无需安装 Node。
 
 ---
 
-## 核心能力
+## 解决什么痛点
+
+运维云主机上的 Caddy 转发，传统方式是：`ssh 上云主机 → 手改 Caddyfile → 重启 Caddy → 祈祷没写错`。
+每次新增/变更一个后端服务都要重复这套流程，而且：
+
+- ❌ **改配置慢**：手写 Caddyfile 语法容易错，改错一个括号，Caddy 直接起不来，线上全挂
+- ❌ **生效慢**：改完要手动 reload / restart，还要担心重启瞬间连接中断
+- ❌ **服务多难管**：几十个域名/上游堆在一个文件里，改哪条都不放心，没有清单、没有开关
+- ❌ **IP 变了连不上**：后端是动态域名，IP 已变但 Caddy 上游还指向旧 IP，用户直接 502
+
+**Caddy Manager 就是为这几个痛点而生。**
+
+---
+
+## 两大核心能力
+
+### ⚡ 快速生效重启 —— 改完即生效，秒级、零中断、防写挂
+
+在面板或 API 上点「**应用配置**」，服务端自动执行完整流水线，**无需 ssh、无需手动 reload**：
+
+```
+生成 Caddyfile → caddy fmt 规范化 → caddy validate 校验（不合格绝不写盘）
+→ 原子写盘 → 自动热重载生效
+```
+
+- **秒级生效**：优先走 Caddy admin API 热加载（`POST /load`），不重启进程、不丢现有连接；失败自动降级 `caddy reload` / `caddy start`，或执行你配置的 `CADDY_RELOAD_CMD`（如 `systemctl reload caddy`）
+- **防写挂**：`caddy validate` 校验不过就中止，**绝不覆盖线上配置**；原子写盘（tmp + rename）保证文件永远完整
+- **可回看**：每次应用有步骤反馈（校验→写盘→重载），出问题马上知道卡在哪一步
+
+### 🚀 快速代理转发配置 —— 网页/API 建规则，不用碰 Caddyfile
+
+中文 Web 面板（或 REST API）里填一张表，就是一条转发规则：
+
+| 字段 | 示例 | 说明 |
+| --- | --- | --- |
+| 名称 | 商城 API | 备注 |
+| 域名 | `api.shop.com` | 支持多个、支持通配 `*.shop.com` |
+| 上游服务 | `http://127.0.0.1:8080` | 支持多地址自动负载均衡 |
+| TLS | 自动 HTTPS / 内网自签 / 仅 HTTP | 自动生成对应 Caddy 指令 |
+| 路径 | `/api` | 可配 `uri strip_prefix` |
+| 健康检查 | `/healthz` | 自动生成 health 指令 |
+| 启停 | 开/关 | 关掉立即从配置中移除，不用删 |
+
+所有规则存 `data/rules.json`，**一键生成规范 Caddyfile**，还支持：
+- **动态域名 IP 自动跟随**：规则选 `dynamic a`，Caddy 定时刷新 A 记录，IP 变了自动切到新后端，无需重载（已用真实 Caddy 端到端验证）；或选「看门狗」模式由管理器定时解析并热重载
+- **负载均衡**：多上游自动生成 `lb_policy round_robin`
+- **批量/幂等部署**：Ansible playbook 拷一个二进制 + systemd 即完成
+
+---
+
+## 30 秒上手
+
+```bash
+# 方式一：源码运行（开发，需 Node >= 18）
+node src/server.js
+# 方式二：单文件二进制（Linux 云主机，无需 Node）
+node scripts/build.mjs bun-linux-x64 && scp dist/caddymanager-linux-x64 root@云主机:/usr/local/bin/caddymanager
+# 然后打开 http://localhost:8888 或 http://云主机IP:8888
+```
+
+1. 点「＋ 新增规则」→ 填域名、上游地址 → 保存
+2. 点「👁 预览配置」确认生成的 Caddyfile
+3. 点「🚀 应用配置」→ **Caddy 立即重新加载生效** ✅
+
+---
+
+## 核心能力总览
 
 | 能力 | 说明 |
 | --- | --- |
-| 🧭 规则管理 | 域名 / 上游地址 / TLS 模式 / 路径匹配 / 健康检查 / 附加指令，CRUD + 启停 |
-| ⚙️ 一键生效 | `caddy fmt` 规范化 → `caddy validate` 校验 → 原子写盘 → **admin API 热加载**（最快路径，不 spawn 进程），失败自动降级 `caddy reload` / `caddy start` / 自定义命令 |
-| 🔄 动态域名跟随 | **两种机制**（见下）：Caddy 原生 `dynamic a` 定时刷新 A 记录（推荐，无需重载）；或管理器看门狗定时解析、IP 变化自动改 upstream 并热重载 |
-| 🚀 高性能 | 零依赖、响应缓存、Gzip、状态缓存（5s TTL）、写盘合并、`QUIET` 模式；实测 **~1.2 万 QPS / 0.08ms** |
-| 📦 单文件二进制 | 用 Bun 交叉编译出 Linux x64/arm64 自包含可执行程序，**目标机无需安装 Node**，页面资源已内嵌 |
-| 🌐 负载均衡 | 单个规则支持多个上游地址，自动生成 `lb_policy round_robin` |
-| 🔐 鉴权 | 可选 `AUTH_TOKEN` Bearer 鉴权（生产必开） |
+| ⚡ 快速生效 | `fmt → validate → 原子写盘 → admin API 热加载`，秒级生效、零中断、校验不过绝不写盘 |
+| 🚀 快速转发配置 | 中文面板 / REST API 建规则，自动生成规范 Caddyfile，支持启停、路径、TLS、健康检查 |
+| 🔄 动态域名跟随 | Caddy 原生 `dynamic a` 定时刷新（无需重载）+ 管理器看门狗自动改 IP 并热重载 |
+| 🌐 负载均衡 | 多上游自动 `lb_policy round_robin` |
+| 📦 单文件二进制 | Bun 交叉编译 Linux x64/arm64 自包含 ELF，目标机零依赖 |
+| 📦 Ansible 部署 | 拷一个二进制 + systemd + 健康检查，幂等可重复执行 |
+| 🚀 高性能 | 响应缓存、Gzip、状态缓存、写盘合并；实测 ~1.2 万 QPS / 0.08ms |
+| 🔐 鉴权 | `AUTH_TOKEN` Bearer 鉴权（生产必开） |
 
 ---
 
-## 动态域名机制（重点）
+## 动态域名机制（重点场景）
 
-后端大规模使用动态域名、IP 随时变化时，任选其一（推荐第 1 种，也可两者叠加）：
+后端大规模使用动态域名、IP 随时变化时，任选其一（推荐第 1 种，可叠加）：
 
 ### 1) Caddy 原生 `dynamic a`（推荐）
 
@@ -44,22 +110,21 @@ shop.example.com {
 
 ### 2) 管理器看门狗（`manager` 模式）
 
-规则「动态 DNS 机制」选 `manager`：后台守护进程按 `dnsInterval` 定时解析监听域名，**IP 变化时自动改写规则 upstream（同端口）并触发热重载**，同时记录 `resolvedIps / lastChangedAt / lastError` 便于审计。也可随时点面板「🔄 刷新 DNS」或调 `POST /api/refresh-dns` 立即执行。
-
-> 适用场景：需要把解析结果固化进配置文件、或 Caddy 配置由其他系统消费、需要明确看到「当前指向的 IP」。
+规则「动态 DNS 机制」选 `manager`：后台守护进程按 `dnsInterval` 定时解析监听域名，**IP 变化时自动改写规则 upstream（同端口）并触发热重载**，同时记录 `resolvedIps / lastChangedAt / lastError` 便于审计。也可随时点面板「🔄 刷新 DNS」立即执行。
 
 ---
 
-## 快速开始（本地）
+## 快速开始与配置
+
+### 本地运行
 
 ```bash
 node src/server.js          # 默认 8888 端口
-# 打开 http://localhost:8888
 ```
 
 首次运行自动创建 `data/rules.json`；`/etc/caddy` 可写时生成目标默认为 `/etc/caddy/Caddyfile`，否则为 `data/Caddyfile`。
 
-## 环境变量
+### 环境变量
 
 | 变量 | 默认 | 说明 |
 | --- | --- | --- |
@@ -73,90 +138,56 @@ node src/server.js          # 默认 8888 端口
 | `CADDY_START_CMD` | 空 | 自定义启动命令，如 `systemctl restart caddy` |
 | `AUTH_TOKEN` | 空 | API Bearer Token（生产必设） |
 | `GLOBAL_TLS_EMAIL` | 空 | 全局 ACME 邮箱 |
-| `SEED_EXAMPLES` | 空 | 首次启动写入示例规则 |
-| `DNS_WATCH_INTERVAL_MS` | `5000` | 看门狗扫描间隔（manager 模式规则按各自 `dnsInterval` 节流） |
+| `DNS_WATCH_INTERVAL_MS` | `5000` | 看门狗扫描间隔 |
 | `QUIET` | 空 | `1` 时关闭请求日志，提升吞吐 |
 
----
-
-## REST API
+### REST API
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/status` | Caddy 安装/运行状态、配置路径、动态规则数 |
-| GET | `/api/rules` | 规则列表 |
-| POST | `/api/rules` | 新建规则 |
-| GET | `/api/rules/:id` | 规则详情 |
-| PUT | `/api/rules/:id` | 更新规则（部分字段） |
-| DELETE | `/api/rules/:id` | 删除规则 |
+| GET | `/api/status` | Caddy 状态、配置路径、动态规则数 |
+| GET/POST | `/api/rules` | 规则列表 / 新建 |
+| GET/PUT/DELETE | `/api/rules/:id` | 详情 / 更新 / 删除 |
 | POST | `/api/rules/:id/toggle` | 启用/停用 |
 | GET | `/api/preview` | 预览生成的 Caddyfile |
 | POST | `/api/apply` | 应用配置：`{dryRun:true}` 仅校验；`{writeOnly:true}` 仅写盘；默认完整生效 |
-| POST | `/api/refresh-dns` | 立即执行动态域名解析 + 自动更新 + 热重载 |
+| POST | `/api/refresh-dns` | 立即解析动态域名 + 自动更新 + 热重载 |
 | POST | `/api/examples` | 载入示例规则 |
-| GET | `/api/meta` | 表单模板元信息 |
 
-规则字段：`name`、`domains`、`upstream`（支持多地址空格/逗号分隔）、`path`、`stripPrefix`、`tls`（auto/internal/off）、`healthPath`、`extra`、`enabled`、`dnsMode`（off/caddy/manager）、`dnsHost`、`lookupInterval`、`dnsInterval`、`dnsResolvers`。
+规则字段：`name`、`domains`、`upstream`（支持多地址）、`path`、`stripPrefix`、`tls`（auto/internal/off）、`healthPath`、`extra`、`enabled`、`dnsMode`（off/caddy/manager）、`dnsHost`、`lookupInterval`、`dnsInterval`、`dnsResolvers`。
 
 ---
-
-## 单文件二进制（Linux 无需 Node）
-
-服务可以编译成**单文件自包含可执行程序**（内置 JS 引擎，目标机零依赖、无需安装 Node），用 [Bun](https://bun.sh) 交叉编译：
-
-```bash
-npm i -g bun 或 brew install bun     # 构建工具，只在控制机需要
-node scripts/build.mjs bun-linux-x64     # Linux x86_64（常见云主机）
-node scripts/build.mjs bun-linux-arm64   # Linux ARM64
-node scripts/build.mjs bun-darwin-x64    # macOS（本地调试）
-```
-
-产物在 `dist/`，例如 `caddymanager-linux-x64`（约 90MB，ELF 单文件，页面资源已内嵌）：
-
-```bash
-# 目标机：一个文件拷过去就能跑
-scp dist/caddymanager-linux-x64 root@云主机:/usr/local/bin/caddymanager
-ssh root@云主机 "caddymanager"    # 默认 8888 端口
-```
-
-> 验证情况：macOS 版二进制已完整实测（内嵌页面 / API / 规则 / 真实 caddy 校验全通过）；Linux 版已交叉编译并经 `file` 确认为 ELF x86-64/aarch64，建议上线前在目标机跑一次冒烟：`./caddymanager-linux-x64 & curl -s localhost:8888/api/status`。
 
 ## 部署（Linux 云主机）
 
 **方式 A：单文件二进制（推荐，无需 Node）**
 ```bash
-node scripts/build.mjs bun-linux-x64
+node scripts/build.mjs bun-linux-x64        # 或 bun-linux-arm64（产物在 dist/）
 scp dist/caddymanager-linux-x64 root@云主机:/usr/local/bin/caddymanager
-ssh root@云主机 "mkdir -p /opt/caddymanager/data && caddymanager"   # 生产请用 systemd 托管（见 deploy/）
+ssh root@云主机 "caddymanager"              # 生产请用 systemd 托管（deploy/caddymanager.service）
 ```
 
 **方式 B：源码运行（开发/调试，需 Node >= 18）**
 ```bash
-sudo bash deploy/install.sh          # 安装 systemd 服务并启动
+sudo bash deploy/install.sh
 ```
 
-systemd 单元见 [`deploy/caddymanager.service`](deploy/caddymanager.service)。生产建议：`AUTH_TOKEN` 必设；`CADDY_RELOAD_CMD=systemctl reload caddy` 交给 systemd 管理 caddy。
-
-### Ansible 一键部署
-
-Ansible 只需「拷一个二进制 + 生成 systemd 单元 + 启动」，目标机**无需安装 Node**，非常适合批量/幂等部署。完整 playbook 见 [`deploy/ansible/`](deploy/ansible/)：
-
+**方式 C：Ansible 一键部署（批量/幂等）**
 ```bash
-# 控制机：先构建 linux 二进制，再执行
 node scripts/build.mjs bun-linux-x64
-vim deploy/ansible/inventory/production/hosts        # 1) 改成你的云主机
-vim deploy/ansible/inventory/production/group_vars/all.yml   # 2) 配置 CADDY_RELOAD_CMD / 端口等
-ansible-playbook -i deploy/ansible/inventory/production/hosts deploy/ansible/playbook.yml   # 3) 部署
+vim deploy/ansible/inventory/production/hosts       # 改成你的云主机
+vim deploy/ansible/inventory/production/group_vars/all.yml
+ansible-playbook -i deploy/ansible/inventory/production/hosts deploy/ansible/playbook.yml
 ```
 
-特性：幂等可重复执行；`AUTH_TOKEN` 自动生成（`lookup('password')` 存控制机、`no_log` 保护）；健康检查通过才算成功；二进制/配置变更自动重启服务。
+生产建议：`AUTH_TOKEN` 必设；`CADDY_RELOAD_CMD=systemctl reload caddy` 交给 systemd 管理 caddy。
 
 ---
 
 ## 测试与验证
 
 ```bash
-npm test                        # 31 项单元/API 测试
+npm test                          # 27 项单元/API 测试
 node scripts/e2e-dynamic-dns.mjs  # 端到端验证 Caddy dynamic a 自动跟随 A 记录变化
 ```
 
