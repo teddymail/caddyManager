@@ -1,0 +1,70 @@
+---
+- name: 检查 Caddy 是否已安装
+  ansible.builtin.command: "{{ caddymanager_caddy_bin }} version"
+  register: caddy_version
+  failed_when: false
+  changed_when: false
+  check_mode: false
+
+- name: 校验 Caddy 已安装
+  ansible.builtin.fail:
+    msg: "未检测到 Caddy，请先安装（https://caddyserver.com/download）。"
+  when: caddy_version.rc != 0
+
+- name: 创建应用目录
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ caddymanager_app_dir }}"
+    - "{{ caddymanager_app_dir }}/data"
+
+- name: 拷贝单文件二进制（无需 Node）
+  ansible.builtin.copy:
+    src: "{{ caddymanager_binary_src }}"
+    dest: "{{ caddymanager_bin_path }}"
+    mode: "0755"
+    owner: root
+    group: root
+
+- name: 渲染 systemd 服务单元
+  ansible.builtin.template:
+    src: caddymanager.service.j2
+    dest: /etc/systemd/system/caddymanager.service
+    mode: "0644"
+  notify: Restart caddymanager
+  no_log: true
+
+- name: 重新加载 systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: 启用并启动服务
+  ansible.builtin.systemd:
+    name: caddymanager
+    enabled: true
+    state: started
+
+- name: 等待服务端口就绪
+  ansible.builtin.wait_for:
+    port: "{{ caddymanager_port }}"
+    host: 127.0.0.1
+    timeout: 30
+    state: started
+
+- name: 健康检查（/api/status）
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ caddymanager_port }}/api/status"
+    method: GET
+    status_code: 200
+    headers:
+      Authorization: "Bearer {{ caddymanager_auth_token }}"
+  register: health
+  until: health.status == 200
+  retries: 5
+  delay: 2
+
+- name: 输出部署结果
+  ansible.builtin.debug:
+    msg: "Caddy Manager 部署完成：http://{{ inventory_hostname }}:{{ caddymanager_port }}（访问令牌见控制机 ./credentials/caddymanager_token）"

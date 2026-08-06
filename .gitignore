@@ -1,0 +1,8 @@
+node_modules/
+data/rules.json
+data/Caddyfile
+data/*.tmp
+*.log
+dist/
+*.bun-build
+.DS_Store

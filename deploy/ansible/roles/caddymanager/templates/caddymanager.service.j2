@@ -1,0 +1,25 @@
+[Unit]
+Description=Caddy Manager - Caddy 反向代理配置管理服务
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ caddymanager_user }}
+WorkingDirectory={{ caddymanager_app_dir }}
+ExecStart={{ caddymanager_bin_path }}
+Restart=on-failure
+RestartSec=3
+Environment=PORT={{ caddymanager_port }}
+Environment=HOST={{ caddymanager_host }}
+Environment=DATA_DIR={{ caddymanager_app_dir }}/data
+Environment=CADDYFILE_PATH={{ caddymanager_caddyfile_path }}
+Environment=CADDY_BIN={{ caddymanager_caddy_bin }}
+Environment=DNS_WATCH_INTERVAL_MS={{ caddymanager_dns_watch_interval_ms }}
+Environment=QUIET=1
+{% if caddymanager_reload_cmd %}Environment=CADDY_RELOAD_CMD={{ caddymanager_reload_cmd }}{% endif %}
+{% if caddymanager_start_cmd %}Environment=CADDY_START_CMD={{ caddymanager_start_cmd }}{% endif %}
+Environment=AUTH_TOKEN={{ caddymanager_auth_token }}
+
+[Install]
+WantedBy=multi-user.target

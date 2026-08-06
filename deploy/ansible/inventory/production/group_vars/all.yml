@@ -1,0 +1,28 @@
+---
+# ---------- Caddy Manager 部署变量（单文件二进制模式，无需安装 Node） ----------
+# 服务端口 / 监听地址
+caddymanager_port: 8888
+caddymanager_host: 0.0.0.0
+
+# 安装路径
+caddymanager_app_dir: /opt/caddymanager
+caddymanager_user: root
+
+# 单文件二进制（控制机路径 + 目标机安装路径）
+#  x86_64 云主机: dist/caddymanager-linux-x64
+#  ARM64  云主机: dist/caddymanager-linux-arm64（改 caddymanager_binary_src 即可）
+caddymanager_binary_src: "{{ playbook_dir }}/../../dist/caddymanager-linux-x64"
+caddymanager_bin_path: /usr/local/bin/caddymanager
+
+# Caddy 相关
+caddymanager_caddy_bin: /usr/bin/caddy
+caddymanager_caddyfile_path: /etc/caddy/Caddyfile
+# 生效指令：caddy 由 systemd 管理时用 reload；留空则服务自动走 admin API / caddy reload
+caddymanager_reload_cmd: ""
+caddymanager_start_cmd: ""
+
+# 动态域名看门狗扫描间隔（毫秒）
+caddymanager_dns_watch_interval_ms: 5000
+
+# 访问令牌：留空自动生成 32 位随机串并保存在控制机 ./credentials/caddymanager_token
+caddymanager_auth_token: "{{ lookup('password', 'credentials/caddymanager_token chars=hexdigits length=32') }}"

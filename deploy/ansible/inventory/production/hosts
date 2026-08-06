@@ -1,0 +1,3 @@
+[caddymanager]
+# 云主机示例：替换为你的真实主机（IP 或域名），并配置 SSH 免密登录
+caddy-host-01 ansible_host=1.2.3.4 ansible_user=root

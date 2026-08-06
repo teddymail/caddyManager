@@ -1,0 +1,10 @@
+#!/bin/sh
+# 测试用假 caddy：fmt/validate/reload/start/version 全部成功
+case "$1" in
+  version) echo "v2.7.6 (fake)"; exit 0 ;;
+  fmt) exit 0 ;;
+  validate) echo "Valid configuration"; exit 0 ;;
+  reload) echo "Reloading..."; exit 0 ;;
+  start) echo "Starting..."; exit 0 ;;
+  *) echo "unknown cmd: $1" >&2; exit 1 ;;
+esac

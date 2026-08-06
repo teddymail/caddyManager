@@ -1,0 +1,12 @@
+---
+galaxy_info:
+  author: caddymanager
+  description: Deploy Caddy Manager (single-file binary, Linux x86_64/arm64, port 8888)
+  license: MIT
+  min_ansible_version: "2.10"
+  platforms:
+    - name: Debian
+      versions: [bookworm, bullseye]
+    - name: EL
+      versions: ["8", "9"]
+dependencies: []

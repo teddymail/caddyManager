@@ -1,0 +1,15 @@
+---
+# Caddy Manager 部署 Playbook
+# 用法:
+#   ansible-playbook -i inventory/production/hosts playbook.yml
+#   # 首次运行后，访问令牌自动生成并保存在控制机 ./credentials/caddymanager_token
+- name: 部署 Caddy Manager
+  hosts: caddymanager
+  become: true
+  gather_facts: true
+  roles:
+    - role: caddymanager
+  post_tasks:
+    - name: 提示访问地址
+      ansible.builtin.debug:
+        msg: "面板: http://{{ inventory_hostname }}:{{ caddymanager_port }}  |  令牌: 见控制机 credentials/caddymanager_token"

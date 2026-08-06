@@ -1,0 +1,34 @@
+[Unit]
+Description=Caddy Manager - Caddy 反向代理配置管理服务
+Documentation=https://github.com/caddyserver/caddy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 生产环境建议固定用户；需能写 /etc/caddy 并重载 caddy（sudo 或同组）
+User=root
+WorkingDirectory=/opt/caddymanager
+ExecStart=/usr/bin/env node /opt/caddymanager/src/server.js
+Restart=on-failure
+RestartSec=3
+# 安全：生产必设 AUTH_TOKEN
+Environment=NODE_ENV=production
+Environment=PORT=8888
+Environment=HOST=0.0.0.0
+Environment=DATA_DIR=/opt/caddymanager/data
+Environment=CADDYFILE_PATH=/etc/caddy/Caddyfile
+Environment=CADDY_BIN=/usr/bin/caddy
+# 生效指令（按你的 caddy 部署方式选择）：
+#   systemd 管理 caddy:  CADDY_RELOAD_CMD=systemctl reload caddy
+#   官方容器/裸进程:      留空，服务会自动用 admin API / caddy reload
+# Environment=CADDY_RELOAD_CMD=systemctl reload caddy
+# Environment=CADDY_START_CMD=systemctl restart caddy
+# Environment=AUTH_TOKEN=请改成强随机串
+# 动态域名管理：manager 模式看门狗扫描间隔（毫秒）
+Environment=DNS_WATCH_INTERVAL_MS=5000
+# 关闭每条请求日志，提升吞吐（调试时可注释）
+Environment=QUIET=1
+
+[Install]
+WantedBy=multi-user.target

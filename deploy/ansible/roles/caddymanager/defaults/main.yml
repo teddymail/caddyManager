@@ -1,0 +1,14 @@
+---
+# 默认值（group_vars / -e 可覆盖）
+caddymanager_port: 8888
+caddymanager_host: 0.0.0.0
+caddymanager_app_dir: /opt/caddymanager
+caddymanager_user: root
+caddymanager_bin_path: /usr/local/bin/caddymanager
+caddymanager_binary_src: "{{ playbook_dir }}/../../dist/caddymanager-linux-x64"
+caddymanager_caddy_bin: /usr/bin/caddy
+caddymanager_caddyfile_path: /etc/caddy/Caddyfile
+caddymanager_reload_cmd: ""
+caddymanager_start_cmd: ""
+caddymanager_dns_watch_interval_ms: 5000
+caddymanager_auth_token: ""
