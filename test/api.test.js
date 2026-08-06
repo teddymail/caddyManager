@@ -218,3 +218,52 @@ test('创建通配符域名规则', async () => {
   assert.equal(status, 201);
   assert.deepEqual(data.rule.domains, ['*.example.com']);
 });
+
+// ---------- 冲突检测 ----------
+test('冲突：同域名+同路径的启用规则被拒绝', async () => {
+  await call('POST', '/api/rules', { name: 'A', domains: 'api.example.com', upstream: 'http://127.0.0.1:9001' });
+  const r = await call('POST', '/api/rules', { name: 'B', domains: 'api.example.com', upstream: 'http://127.0.0.1:9002' });
+  assert.equal(r.status, 400);
+  assert.match(r.data.error, /冲突/);
+  assert.ok(Array.isArray(r.data.conflicts) && r.data.conflicts.length === 1);
+});
+
+test('不冲突：精确域名与通配符可共存', async () => {
+  const r = await call('POST', '/api/rules', { name: '精确', domains: 'api.example.com', upstream: 'http://127.0.0.1:9001', path: '/api' });
+  const w = await call('POST', '/api/rules', { name: '通配', domains: '*.example.com', upstream: 'http://127.0.0.1:9002', path: '/api' });
+  assert.equal(r.status, 201);
+  assert.equal(w.status, 201);
+});
+
+test('不冲突：同域名不同路径', async () => {
+  const a = await call('POST', '/api/rules', { name: 'p1', domains: 'x.example.com', upstream: 'http://127.0.0.1:9001', path: '/a' });
+  const b = await call('POST', '/api/rules', { name: 'p2', domains: 'x.example.com', upstream: 'http://127.0.0.1:9002', path: '/b' });
+  assert.equal(a.status, 201);
+  assert.equal(b.status, 201);
+});
+
+test('不冲突：停用的规则不参与冲突检测', async () => {
+  const r = await call('POST', '/api/rules', { name: 'off', domains: 'off.example.com', upstream: 'http://127.0.0.1:9001', enabled: false });
+  assert.equal(r.status, 201);
+  const r2 = await call('POST', '/api/rules', { name: 'on', domains: 'off.example.com', upstream: 'http://127.0.0.1:9002' });
+  assert.equal(r2.status, 201);
+});
+
+test('冲突：编辑规则改成重复域名被拒绝', async () => {
+  const a = await call('POST', '/api/rules', { name: 'E1', domains: 'e.example.com', upstream: 'http://127.0.0.1:9001' });
+  const b = await call('POST', '/api/rules', { name: 'E2', domains: 'e2.example.com', upstream: 'http://127.0.0.1:9002' });
+  const upd = await call('PUT', `/api/rules/${b.data.rule.id}`, { domains: 'e.example.com' });
+  assert.equal(upd.status, 400);
+  assert.match(upd.data.error, /冲突/);
+  assert.equal(a.status, 201);
+});
+
+test('冲突：启用与已有启用的规则冲突时被拒绝', async () => {
+  const x = await call('POST', '/api/rules', { name: 'T1', domains: 't.example.com', upstream: 'http://127.0.0.1:9001' });
+  const y = await call('POST', '/api/rules', { name: 'T2', domains: 't.example.com', upstream: 'http://127.0.0.1:9002', enabled: false });
+  assert.equal(y.status, 201); // 停用时可建
+  const tog = await call('POST', `/api/rules/${y.data.rule.id}/toggle`);
+  assert.equal(tog.status, 400);
+  assert.match(tog.data.error, /冲突/);
+  assert.equal(x.status, 201);
+});

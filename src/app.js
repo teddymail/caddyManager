@@ -135,7 +135,7 @@ export function createApp(config, { store } = {}) {
   router.post('/api/rules', async (req, res) => {
     const body = await readBody(req);
     const r = app.store.create(body);
-    if (!r.ok) return sendError(req, res, 400, r.error);
+    if (!r.ok) return sendError(req, res, 400, r.error, { conflicts: r.conflicts });
     invalidateRulesCache();
     sendJson(req, res, 201, { ok: true, rule: r.rule });
   });
@@ -149,7 +149,7 @@ export function createApp(config, { store } = {}) {
   router.put('/api/rules/:id', async (req, res) => {
     const body = await readBody(req);
     const r = app.store.update(req.params.id, body);
-    if (!r.ok) return sendError(req, res, r.error === '规则不存在' ? 404 : 400, r.error);
+    if (!r.ok) return sendError(req, res, r.error === '规则不存在' ? 404 : 400, r.error, { conflicts: r.conflicts });
     invalidateRulesCache();
     sendJson(req, res, 200, { ok: true, rule: r.rule });
   });
@@ -163,7 +163,7 @@ export function createApp(config, { store } = {}) {
 
   router.post('/api/rules/:id/toggle', (req, res) => {
     const r = app.store.toggle(req.params.id);
-    if (!r.ok) return sendError(req, res, 404, r.error);
+    if (!r.ok) return sendError(req, res, r.error === '规则不存在' ? 404 : 400, r.error, { conflicts: r.conflicts });
     invalidateRulesCache();
     sendJson(req, res, 200, { ok: true, rule: r.rule });
   });

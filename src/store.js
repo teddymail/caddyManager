@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { randomId, nowIso, normalizeRule, exampleRules } from './util.js';
+import { randomId, nowIso, normalizeRule, exampleRules, findRuleConflicts, conflictMessage } from './util.js';
 
 /**
  * 规则存储：单文件 JSON，写盘使用「临时文件 + rename」保证原子性。
@@ -74,6 +74,8 @@ export class Store {
     if (!ok) return { ok: false, error };
     const now = nowIso();
     const rule = { ...value, id: randomId(), createdAt: now, updatedAt: now };
+    const conflicts = findRuleConflicts(this.rules, rule);
+    if (conflicts.length) return { ok: false, error: conflictMessage(conflicts), conflicts };
     this.rules.push(rule);
     this.persist();
     return { ok: true, rule: { ...rule } };
@@ -84,7 +86,10 @@ export class Store {
     if (idx === -1) return { ok: false, error: '规则不存在' };
     const { ok, value, error } = normalizeRule(patch, { partial: true });
     if (!ok) return { ok: false, error };
-    this.rules[idx] = { ...this.rules[idx], ...value, updatedAt: nowIso() };
+    const next = { ...this.rules[idx], ...value, updatedAt: nowIso() };
+    const conflicts = findRuleConflicts(this.rules, next);
+    if (conflicts.length) return { ok: false, error: conflictMessage(conflicts), conflicts };
+    this.rules[idx] = next;
     this.persist();
     return { ok: true, rule: { ...this.rules[idx] } };
   }
@@ -100,7 +105,13 @@ export class Store {
   toggle(id) {
     const idx = this.rules.findIndex((x) => x.id === id);
     if (idx === -1) return { ok: false, error: '规则不存在' };
-    this.rules[idx].enabled = !this.rules[idx].enabled;
+    const nextEnabled = !this.rules[idx].enabled;
+    if (nextEnabled) {
+      const next = { ...this.rules[idx], enabled: true };
+      const conflicts = findRuleConflicts(this.rules, next);
+      if (conflicts.length) return { ok: false, error: conflictMessage(conflicts), conflicts };
+    }
+    this.rules[idx].enabled = nextEnabled;
     this.rules[idx].updatedAt = nowIso();
     this.persist();
     return { ok: true, rule: { ...this.rules[idx] } };

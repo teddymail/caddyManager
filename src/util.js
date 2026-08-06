@@ -156,6 +156,34 @@ export function defaultRule() {
   };
 }
 
+/** 检测候选规则与已有「已启用」规则是否冲突。
+ *  冲突定义：同域名 + 同路径 的两条启用规则（会互相覆盖/歧义）。
+ *  精确域名 api.example.com 与通配符 *.example.com 可共存，不算冲突。
+ *  返回冲突的已有规则列表。 */
+export function findRuleConflicts(existingRules, candidate) {
+  if (!candidate || candidate.enabled === false) return [];
+  const normPath = (p) => (p == null ? '' : String(p));
+  const conflicts = [];
+  const candDomains = candidate.domains || [];
+  const candPath = normPath(candidate.path);
+  for (const r of existingRules) {
+    if (!r.enabled) continue;
+    if (r.id && candidate.id && r.id === candidate.id) continue;
+    if (normPath(r.path) !== candPath) continue;
+    const overlap = (r.domains || []).some((d) => candDomains.includes(d));
+    if (overlap) {
+      conflicts.push({ id: r.id, name: r.name, domains: r.domains, path: r.path });
+    }
+  }
+  return conflicts;
+}
+
+/** 生成冲突提示文案。 */
+export function conflictMessage(conflicts) {
+  const parts = conflicts.map((c) => `「${c.name}」(${(c.domains || []).join(', ')})`);
+  return `与已有规则冲突：${parts.join('、')}。同一域名+路径只能有一条启用的规则（精确域名与通配符 *.xxx.com 可共存）。`;
+}
+
 export function exampleRules() {
   return [
     {
