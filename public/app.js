@@ -223,10 +223,21 @@
   }
 
   // ---------- Token ----------
+  function updateAuthBadge() {
+    const badge = $('#auth-badge');
+    const has = !!localStorage.getItem('cm_token');
+    badge.textContent = has ? '🔑 已登录' : '🔑 未登录';
+    badge.className = `badge ${has ? 'badge-ok' : 'badge-bad'}`;
+    badge.title = has ? '令牌已保存在本浏览器，操作自动携带' : '首次使用请输入令牌';
+  }
+
   function openTokenModal(force = false) {
     const has = !!localStorage.getItem('cm_token');
     if (!force && !has) { toast('当前服务未开启鉴权'); return; }
     $('#f-token').value = localStorage.getItem('cm_token') || '';
+    $('#token-status').textContent = has
+      ? '✅ 令牌已保存在本浏览器，之后操作无需重复输入；如需更换请直接修改后保存。'
+      : '服务已强制鉴权：请输入令牌（服务器启动日志可见，或由管理员设置 AUTH_TOKEN）。只需输入一次，浏览器会记住。';
     $('#token-modal').showModal();
   }
 
@@ -235,6 +246,7 @@
     if (v) localStorage.setItem('cm_token', v);
     else localStorage.removeItem('cm_token');
     $('#token-modal').close();
+    updateAuthBadge();
     toast(v ? 'Token 已保存，正在加载…' : '已清除 Token');
     if (v) {
       try {
@@ -333,6 +345,14 @@
     $('#f-dnsmode').addEventListener('change', toggleDnsFields);
     $('#btn-token').addEventListener('click', () => openTokenModal());
     $('#btn-token-save').addEventListener('click', saveToken);
+    $('#btn-token-clear').addEventListener('click', async () => {
+      localStorage.removeItem('cm_token');
+      updateAuthBadge();
+      $('#token-modal').close();
+      toast('已退出登录');
+      await new Promise((r) => setTimeout(r, 300));
+      openTokenModal(true);
+    });
     $('#rule-form').addEventListener('submit', saveRule);
 
     $$('[data-close]').forEach((b) => b.addEventListener('click', () => $(`#${b.dataset.close}`).close()));
@@ -353,6 +373,7 @@
   // ---------- 启动 ----------
   async function init() {
     bind();
+    updateAuthBadge();
     if (!localStorage.getItem('cm_token')) {
       openTokenModal(true); // 服务默认强制鉴权，首次使用先输入令牌
       return;

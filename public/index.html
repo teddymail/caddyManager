@@ -17,8 +17,9 @@
         </div>
       </div>
       <div class="topbar-right">
+        <span id="auth-badge" class="badge badge-unknown" title="鉴权状态">🔑 未登录</span>
         <span id="caddy-badge" class="badge badge-unknown">Caddy 检测中…</span>
-        <button id="btn-token" class="btn btn-ghost" title="设置访问 Token">🔑 Token</button>
+        <button id="btn-token" class="btn btn-ghost" title="查看/更换访问 Token">🔑 Token</button>
       </div>
     </div>
   </header>
@@ -201,11 +202,12 @@
       <button type="button" class="btn-close" data-close="token-modal">✕</button>
     </div>
     <div class="modal-body">
-      <p class="muted">服务已强制开启鉴权，所有操作需携带 <code>Authorization: Bearer &lt;token&gt;</code>。<br/>令牌在服务器启动日志中查看（自动生成），或由管理员设置 <code>AUTH_TOKEN</code>。</p>
+      <p id="token-status" class="muted"></p>
       <input id="f-token" type="password" placeholder="输入 Bearer Token" autocomplete="off" />
     </div>
     <div class="modal-foot">
       <button type="button" class="btn btn-ghost" data-close="token-modal">取消</button>
+      <button id="btn-token-clear" class="btn btn-ghost" style="color:var(--danger)">清除并退出</button>
       <button id="btn-token-save" class="btn btn-primary">保存</button>
     </div>
   </dialog>
