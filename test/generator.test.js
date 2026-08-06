@@ -96,3 +96,19 @@ test('dnsMode=caddy 显式 dnsHost 与自定义 resolver', () => {
   assert.match(out, /resolvers 8\.8\.8\.8 1\.1\.1\.1/);
   assert.match(out, /refresh 10s/);
 });
+
+test('通配符域名生成 *.example.com 站点块', () => {
+  const out = generateCaddyfile([{ ...base, domains: ['*.example.com'] }]);
+  assert.match(out, /^\*\.example\.com \{/m);
+});
+
+test('精确域名规则排在通配符规则之前', () => {
+  const out = generateCaddyfile([
+    { ...base, id: 'wild', name: 'wild', domains: ['*.example.com'], upstream: 'http://127.0.0.1:9002' },
+    { ...base, id: 'exact', name: 'exact', domains: ['api.example.com'], upstream: 'http://127.0.0.1:9001' },
+  ]);
+  const exactIdx = out.indexOf('api.example.com {');
+  const wildIdx = out.indexOf('*.example.com {');
+  assert.ok(exactIdx !== -1 && wildIdx !== -1);
+  assert.ok(exactIdx < wildIdx, '精确规则必须先生成');
+});

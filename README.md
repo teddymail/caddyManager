@@ -209,6 +209,8 @@ node src/server.js          # 默认 8888 端口
 
 规则字段：`name`、`domains`、`upstream`（支持多地址）、`path`、`stripPrefix`、`tls`（auto/internal/off）、`healthPath`、`extra`、`enabled`、`dnsMode`（off/caddy/manager）、`dnsHost`、`lookupInterval`、`dnsInterval`、`dnsResolvers`。
 
+**域名匹配优先级**：支持通配符 `*.example.com`；请求按 **精确域名 → 通配符** 匹配（如同时配置 `api.example.com` 和 `*.example.com`，访问 `api.example.com` 走精确规则，其他 `*.example.com` 子域走通配规则）。生成 Caddyfile 时精确规则自动排在通配规则之前。
+
 ---
 
 ## 发布 Release（自动编译）

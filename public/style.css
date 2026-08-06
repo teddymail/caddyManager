@@ -103,6 +103,7 @@ body {
 }
 .tag-tls-auto { color: var(--primary); border-color: rgba(56,189,248,.4); }
 .tag-dns { color: #c4b5fd; border-color: rgba(167,139,250,.4); }
+.tag-wild { color: #6ee7b7; border-color: rgba(52,211,153,.4); }
 .dns-panel {
   border: 1px dashed var(--border); border-radius: 10px; padding: 12px;
   background: rgba(139,92,246,.06); display: flex; flex-direction: column; gap: 12px;

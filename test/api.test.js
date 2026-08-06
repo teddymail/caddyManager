@@ -209,3 +209,12 @@ test('鉴权：设置 token 后无 token 请求被拒、带 token 通过', async
   assert.equal(res.status, 200);
   config.authToken = '';
 });
+
+// ---------- 通配符域名 ----------
+test('创建通配符域名规则', async () => {
+  const { status, data } = await call('POST', '/api/rules', {
+    name: '通配服务', domains: '*.example.com', upstream: 'http://127.0.0.1:8080', tls: 'auto',
+  });
+  assert.equal(status, 201);
+  assert.deepEqual(data.rule.domains, ['*.example.com']);
+});

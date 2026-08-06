@@ -79,7 +79,9 @@
         ? `<div class="muted">已解析: ${r.resolvedIps.map(esc).join(', ')}</div>` : '';
       tr.innerHTML = `
         <td><strong>${esc(r.name)}</strong>${dnsBadge}</td>
-        <td>${r.domains.map((d) => `<span class="tag">${esc(d)}</span>`).join('')}</td>
+        <td>${r.domains.map((d) => d.startsWith('*.')
+          ? `<span class="tag tag-wild" title="通配符匹配：精确域名优先于本规则">🌐 ${esc(d)}</span>`
+          : `<span class="tag">${esc(d)}</span>`).join('')}</td>
         <td><code>${esc(r.upstream)}</code>${resolved}${r.path ? `<div class="muted">路径: ${esc(r.path)}</div>` : ''}</td>
         <td><span class="${tlsClass}">${tlsLabel}</span></td>
         <td><span class="dot ${r.enabled ? 'dot-on' : 'dot-off'}"></span>${r.enabled ? '启用' : '停用'}</td>

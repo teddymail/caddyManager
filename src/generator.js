@@ -36,7 +36,14 @@ export function generateCaddyfile(rules, opts = {}) {
     lines.push('}');
   }
 
-  const enabled = (rules || []).filter((r) => r && r.enabled);
+  // 匹配优先级排序：精确域名规则在前，通配符 (*.xxx.com) 规则在后（Caddy 本身精确优先，排序只为配置可读）
+  const enabled = (rules || [])
+    .filter((r) => r && r.enabled)
+    .sort((a, b) => {
+      const aWild = (a.domains || []).some((d) => d.startsWith('*.'));
+      const bWild = (b.domains || []).some((d) => d.startsWith('*.'));
+      return (aWild ? 1 : 0) - (bWild ? 1 : 0);
+    });
 
   if (!enabled.length) {
     lines.push('');

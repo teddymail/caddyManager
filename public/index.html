@@ -88,8 +88,8 @@
         <label>名称 <span class="req">*</span>
           <input id="f-name" required placeholder="例如：商城 API 服务" maxlength="100" />
         </label>
-        <label>域名 <span class="req">*</span><span class="hint">多个域名用逗号或空格分隔，支持 *.example.com</span>
-          <input id="f-domains" required placeholder="api.example.com" />
+        <label>域名 <span class="req">*</span><span class="hint">多个域名用逗号/空格分隔；支持通配符 <code>*.example.com</code>（精确匹配优先于通配符）</span>
+          <input id="f-domains" required placeholder="api.example.com, *.example.com" />
         </label>
         <label>上游服务地址 <span class="req">*</span>
           <input id="f-upstream" required placeholder="http://127.0.0.1:8080" />
