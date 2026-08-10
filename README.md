@@ -53,7 +53,7 @@
 | 域名 | `api.shop.com` | 支持多个、支持通配 `*.shop.com` |
 | 上游服务 | `http://127.0.0.1:8080` | 支持多地址自动负载均衡 |
 | TLS | 自动 HTTPS / 内网自签 / 仅 HTTP | 自动生成对应 Caddy 指令 |
-| 路径 | `/api` | 可配 `uri strip_prefix` |
+| 路径 | `/api` | **子路径转发**：同域名可按路径分流到不同上游（如 `resume.ykcode.top` → 主站、`resume.ykcode.top/api` → 另一个 IP:端口），自动生成 `handle /api` + `handle /api/*`，可配 `uri strip_prefix` |
 | 健康检查 | `/healthz` | 自动生成 health 指令 |
 | 启停 | 开/关 | 关掉立即从配置中移除，不用删 |
 

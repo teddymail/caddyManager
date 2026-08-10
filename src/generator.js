@@ -1,17 +1,3 @@
-/**
- * Caddyfile 生成器：把规则列表渲染成 Caddy v2 Caddyfile。
- *
- * 规则 -> 站点块规则：
- *   - tls = auto     -> 站点地址使用裸域名（自动 HTTPS + 自动证书）
- *   - tls = internal -> 站点地址使用裸域名 + `tls internal` 指令（内网自签）
- *   - tls = off      -> 站点地址加 `http://` 前缀（仅 HTTP，禁用自动 TLS）
- *   - path           -> 作为 reverse_proxy 的路径匹配器（如 /api/*）
- *   - stripPrefix    -> 与 path 搭配，追加 `uri strip_prefix`
- *   - healthPath     -> 在 reverse_proxy 块内追加健康检查选项
- *   - upstream       -> 支持多个地址（空格/逗号/换行分隔），多于 1 个时自动启用轮询负载均衡
- *   - extra          -> 原样追加的自定义指令（每行一条）
- */
-
 import { deriveUpstreamHostPort } from './util.js';
 
 function quote(s) {
@@ -23,6 +9,73 @@ function siteAddresses(rule) {
   return rule.domains.map((d) => `${prefix}${d}`).join(', ');
 }
 
+function upstreamList(rule) {
+  return String(rule.upstream || '').split(/\s+/).filter(Boolean);
+}
+
+/** path 转 handle 匹配：/api 需要同时匹配精确 /api 和前缀 /api/*。 */
+function handlePaths(p) {
+  if (!p) return [];
+  if (p.endsWith('/*')) return [p];
+  return [p, `${p}/*`];
+}
+
+/** reverse_proxy 块内选项（不含 path matcher，路径由 handle 承担）。 */
+function reverseProxyBlockOptions(rule) {
+  const upstreams = upstreamList(rule);
+  const blockOpts = [];
+  if (rule.healthPath) {
+    blockOpts.push(`health_uri ${quote(rule.healthPath)}`);
+    blockOpts.push('health_interval 30s');
+    blockOpts.push('health_timeout 5s');
+  }
+  if (rule.forwardHeaders !== false) {
+    blockOpts.push(`header_up X-Real-IP {http.request.remote.host}`);
+    blockOpts.push(`header_up X-Forwarded-Proto {http.request.scheme}`);
+    blockOpts.push(`header_up X-Forwarded-Host {http.request.host}`);
+  }
+  if (rule.trustProxy) blockOpts.push('trusted_proxies private_ranges');
+  if (upstreams.length > 1) blockOpts.unshift('lb_policy round_robin');
+  return blockOpts;
+}
+
+/** 渲染一条规则的 reverse_proxy（普通或 dynamic a），写入 handle 块内（缩进 8 空格）。 */
+function renderReverseProxy(rule, indent) {
+  const pad = ' '.repeat(indent);
+  const inner = ' '.repeat(indent + 4);
+  const upstreams = upstreamList(rule);
+  const blockOpts = reverseProxyBlockOptions(rule);
+
+  if (rule.dnsMode === 'caddy') {
+    const { host, port } = deriveUpstreamHostPort(rule.upstream);
+    const dnsHost = rule.dnsHost || host;
+    if (!dnsHost || !port) return [];
+    const lines = [`${pad}reverse_proxy {`];
+    lines.push(`${inner}dynamic a ${quote(dnsHost)} ${port} {`);
+    lines.push(`${inner}    refresh ${Number(rule.lookupInterval) || 60}s`);
+    if (rule.dnsResolvers) {
+      const rs = String(rule.dnsResolvers).split(/[,\s]+/).filter(Boolean);
+      if (rs.length) lines.push(`${inner}    resolvers ${rs.join(' ')}`);
+    }
+    // 省略 versions（兼容旧版 Caddy，默认即 ipv4+ipv6）
+    lines.push(`${inner}}`);
+    for (const o of blockOpts) lines.push(`${inner}${o}`);
+    lines.push(`${pad}}`);
+    return lines;
+  }
+
+  const lines = [`${pad}reverse_proxy ${upstreams.join(' ')} {`];
+  for (const o of blockOpts) lines.push(`${inner}${o}`);
+  lines.push(`${pad}}`);
+  return lines;
+}
+
+/**
+ * Caddyfile 生成器：
+ *  - 同域名的多条规则合并到同一个站点块，用 handle 按路径分流（Caddy 不允许同 host 定义多个站点块）
+ *  - 有 path 的规则在前（更具体），无 path 的规则作为兜底放最后
+ *  - 系统保护规则（selfDomain）始终注入
+ */
 export function generateCaddyfile(rules, opts = {}) {
   const lines = [];
   lines.push('# 本文件由 Caddy Manager 自动生成，请勿手动编辑。');
@@ -44,7 +97,7 @@ export function generateCaddyfile(rules, opts = {}) {
     lines.push('}');
   }
 
-  // 匹配优先级排序：精确域名规则在前，通配符 (*.xxx.com) 规则在后（Caddy 本身精确优先，排序只为配置可读）
+  // 匹配优先级排序：精确域名规则在前，通配符 (*.xxx.com) 规则在后
   const enabled = (rules || [])
     .filter((r) => r && r.enabled)
     .sort((a, b) => {
@@ -71,7 +124,6 @@ export function generateCaddyfile(rules, opts = {}) {
       trustProxy: false,
       protected: true,
     };
-    // 移除用户侧与该域名冲突的启用规则（由系统规则接管，避免重复/覆盖）
     const filtered = enabled.filter((r) => !(r.domains || []).includes(sysDomain));
     enabled.length = 0;
     enabled.push(...filtered, sysRule);
@@ -80,15 +132,23 @@ export function generateCaddyfile(rules, opts = {}) {
   if (!enabled.length) {
     lines.push('');
     lines.push('# （暂无启用的规则）');
-    return lines.join('\n') + '\n';
   }
 
+  // 按域名集合分组：同域名的规则合并到同一站点块（避免 Caddy ambiguous site definition）
+  const groups = new Map();
   for (const rule of enabled) {
+    const key = [...rule.domains].sort().join(',');
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(rule);
+  }
+
+  for (const group of groups.values()) {
+    // 组内排序：有路径的在前（更具体），无路径的兜底放最后
+    const sorted = [...group].sort((a, b) => (a.path ? 0 : 1) - (b.path ? 0 : 1));
+    const first = sorted[0];
     lines.push('');
-    lines.push(`${siteAddresses(rule)} {`);
-    if (rule.tls === 'internal') {
-      lines.push('    tls internal');
-    }
+    lines.push(`${siteAddresses(first)} {`);
+    if (first.tls === 'internal') lines.push('    tls internal');
     if (logsEnabled && opts.caddyAccessLog) {
       lines.push('    log {');
       lines.push(`        output file ${quote(opts.caddyAccessLog)}`);
@@ -96,61 +156,41 @@ export function generateCaddyfile(rules, opts = {}) {
       lines.push('        level INFO');
       lines.push('    }');
     }
-    if (rule.extra) {
-      for (const l of String(rule.extra).split('\n')) {
+    if (first.extra) {
+      for (const l of String(first.extra).split('\n')) {
         const t = l.trim();
         if (t) lines.push(`    ${t}`);
       }
     }
-    const matcher = rule.path ? `${quote(rule.path)} ` : '';
-    const blockOpts = [];
-    if (rule.healthPath) {
-      blockOpts.push(`health_uri ${quote(rule.healthPath)}`);
-      blockOpts.push('health_interval 30s');
-      blockOpts.push('health_timeout 5s');
-    }
-    if (rule.stripPrefix && rule.path) {
-      blockOpts.push(`uri strip_prefix ${quote(rule.path)}`);
-    }
 
-    // 动态 DNS（Caddy 原生 dynamic a：A/AAAA 记录定时刷新，自动跟随 IP 变化）
-    if (rule.dnsMode === 'caddy') {
-      const { host, port } = deriveUpstreamHostPort(rule.upstream);
-      const dnsHost = rule.dnsHost || host;
-      if (dnsHost && port) {
-        lines.push('    reverse_proxy {');
-        lines.push(`        dynamic a ${quote(dnsHost)} ${port} {`);
-        lines.push(`            refresh ${Number(rule.lookupInterval) || 60}s`);
-        if (rule.dnsResolvers) {
-          const rs = String(rule.dnsResolvers).split(/[,\s]+/).filter(Boolean);
-          if (rs.length) lines.push(`            resolvers ${rs.join(' ')}`);
+    sorted.forEach((rule, i) => {
+      const isLast = i === sorted.length - 1;
+      const isDynamic = rule.dnsMode === 'caddy';
+      if (rule.path) {
+        // 有路径：handle 精确 + 通配（覆盖 /api 与 /api/*）
+        for (const hp of handlePaths(rule.path)) {
+          lines.push(`    handle ${quote(hp)} {`);
+          if (rule.stripPrefix) lines.push(`        uri strip_prefix ${quote(rule.path)}`);
+          lines.push(...renderReverseProxy(rule, 8));
+          lines.push('    }');
         }
-        // 省略 versions（Caddy 默认即 ipv4+ipv6），兼容旧版 Caddy（如 2.6.x 无该选项）
-        lines.push('        }');
+      } else if (sorted.length > 1) {
+        // 组内有多条规则：无路径的作为兜底 handle
+        lines.push('    handle {');
+        lines.push(...renderReverseProxy(rule, 8));
+        lines.push('    }');
+      } else if (isDynamic) {
+        // 单条 dynamic a：直接块内 reverse_proxy
+        lines.push(...renderReverseProxy(rule, 4));
+      } else {
+        // 单条普通规则：直接块内 reverse_proxy（无 handle 包裹，保持简洁）
+        const upstreams = upstreamList(rule);
+        const blockOpts = reverseProxyBlockOptions(rule);
+        lines.push(`    reverse_proxy ${upstreams.join(' ')} {`);
         for (const o of blockOpts) lines.push(`        ${o}`);
         lines.push('    }');
-        lines.push('}');
-        continue;
       }
-    }
-
-    const upstreams = String(rule.upstream || '').split(/\s+/).filter(Boolean);
-    const rp = [`    reverse_proxy ${matcher}${upstreams.join(' ')}`];
-    // 转发头：携带用户 IP 等代理信息给上游（X-Forwarded-For 由 Caddy 按 trusted_proxies 规则自动追加）
-    if (rule.forwardHeaders !== false) {
-      blockOpts.push(`header_up X-Real-IP {http.request.remote.host}`);
-      blockOpts.push(`header_up X-Forwarded-Proto {http.request.scheme}`);
-      blockOpts.push(`header_up X-Forwarded-Host {http.request.host}`);
-    }
-    if (rule.trustProxy) blockOpts.push('trusted_proxies private_ranges');
-    if (upstreams.length > 1) blockOpts.unshift('lb_policy round_robin');
-    if (blockOpts.length) {
-      lines.push(`${rp[0]} {`);
-      for (const o of blockOpts) lines.push(`        ${o}`);
-      lines.push('    }');
-    } else {
-      lines.push(rp[0]);
-    }
+    });
     lines.push('}');
   }
 
@@ -169,4 +209,3 @@ export function generateCaddyfile(rules, opts = {}) {
   lines.push('');
   return lines.join('\n');
 }
-

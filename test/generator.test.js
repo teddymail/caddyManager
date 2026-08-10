@@ -30,9 +30,24 @@ test('多域名用逗号分隔', () => {
   assert.match(out, /^a\.com, www\.a\.com \{/m);
 });
 
-test('path 作为 reverse_proxy 路径匹配器', () => {
+test('path 生成 handle 子路径分流（精确 + 通配，同域名合并站点块）', () => {
   const out = generateCaddyfile([{ ...base, path: '/api' }]);
-  assert.match(out, /reverse_proxy \/api http:\/\/127\.0\.0\.1:8080/);
+  assert.match(out, /handle \/api \{/);
+  assert.match(out, /handle \/api\/\* \{/);
+  assert.match(out, /reverse_proxy http:\/\/127\.0\.0\.1:8080/);
+  assert.doesNotMatch(out, /reverse_proxy \/api http/);
+});
+
+test('同域名不同路径合并到同一站点块', () => {
+  const out = generateCaddyfile([
+    { ...base, domains: ['r.example.com'], upstream: 'http://127.0.0.1:8001', path: '' },
+    { ...base, domains: ['r.example.com'], upstream: 'http://127.0.0.1:8002', path: '/api' },
+  ]);
+  // 只出现一个站点块头
+  const heads = out.match(/r\.example\.com \{/g) || [];
+  assert.equal(heads.length, 1);
+  assert.match(out, /handle \/api \{/);
+  assert.match(out, /handle \{/);
 });
 
 test('stripPrefix + path 输出 uri strip_prefix', () => {
