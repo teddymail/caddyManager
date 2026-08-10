@@ -322,6 +322,12 @@
       const src = $('#cfg-source');
       src.textContent = SOURCE_LABEL[c.source] || c.source;
       src.className = `tag ${c.source === 'manual' || c.source === 'env' ? 'tag-tls-internal' : 'tag-dns'}`;
+      const TOKEN_SOURCE = { env: '环境变量（Ansible/系统注入）', settings: '已持久化', generated: '自动生成' };
+      const ts = $('#cfg-token-source');
+      if (ts) {
+        ts.textContent = TOKEN_SOURCE[c.authTokenSource] || c.authTokenSource || '-';
+        ts.className = `tag ${c.authTokenSource === 'env' ? 'tag-tls-internal' : 'tag-dns'}`;
+      }
       $('#f-cfgpath').value = c.source === 'manual' ? c.caddyfilePath : '';
       $('#f-fallback').checked = c.fallbackEnabled !== false;
       $('#f-fallback-status').value = c.fallbackStatus || 503;

@@ -211,7 +211,7 @@ node src/server.js          # 默认 8888 端口
 | `CADDYFILE_PATH` | 自动定位 | 生成的目标 Caddyfile；**留空自动定位**：`/etc/caddy/Caddyfile` → `~/.config/caddy/Caddyfile` → `data/Caddyfile`，也可在面板 ⚙ 设置里手动指定 |
 | `CADDY_RELOAD_CMD` | 空 | 自定义生效命令，如 `systemctl reload caddy`（优先于 admin API / caddy reload） |
 | `CADDY_START_CMD` | 空 | 自定义启动命令，如 `systemctl restart caddy` |
-| `AUTH_TOKEN` | 自动生成 | API Bearer Token；**留空自动生成** 32 位随机令牌（打印在启动日志、持久化到 `data/settings.json`） |
+| `AUTH_TOKEN` | 自动生成 | API Bearer Token；**Ansible/systemd 注入优先**（有注入用注入的），**仅完全未设置时才自动生成** 32 位随机令牌（打印在启动日志、持久化到 `data/settings.json`） |
 | `GLOBAL_TLS_EMAIL` | 空 | 全局 ACME 邮箱 |
 | `DNS_WATCH_INTERVAL_MS` | `5000` | 看门狗扫描间隔 |
 | `CADDY_ACCESS_LOG` | 自动定位 | Caddy 转发匹配日志文件（默认 `/var/log/caddy/access.log`，不可写则 `data/access.log`）；**也可在面板 ⚙ 设置手动指定** |

@@ -84,6 +84,7 @@ export function createApp(config, { store } = {}) {
       caddyfilePath: config.caddyfilePath,
       source: config.caddyfilePathSource,
       envOverridden: Boolean(process.env.CADDYFILE_PATH),
+      authTokenSource: config.authTokenSource,
       runningCaddyConfig: running,
       caddyAccessLog: config.caddyAccessLog,
       caddyErrorLog: config.caddyErrorLog,

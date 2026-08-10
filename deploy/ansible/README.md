@@ -44,7 +44,7 @@ ansible-playbook -i inventory/production/hosts playbook.yml
 | `caddymanager_caddy_bin` | `/usr/bin/caddy` | caddy 可执行文件 |
 | `caddymanager_caddyfile_path` | `/etc/caddy/Caddyfile` | 生成的 Caddyfile |
 | `caddymanager_reload_cmd` | 空 | 生效指令，如 `systemctl reload caddy` |
-| `caddymanager_auth_token` | 空 | **初始密码/访问令牌**：留空自动生成 32 位随机串（保存在控制机 `./credentials/caddymanager_token`）；**手动指定则部署时使用你设置的值**（也可用 `-e caddymanager_auth_token=xxx` 传入） |
+| `caddymanager_auth_token` | 空 | **初始密码/访问令牌（注入机制）**：留空时 Ansible 自动生成 32 位随机串并**注入**（保存在控制机 `./credentials/caddymanager_token`）；**手动指定则注入你设置的值**（也可用 `-e caddymanager_auth_token=xxx` 传入）。服务端只认「**有注入就用注入的，完全没设置才自动生成**」，注入优先级最高 |
 
 ## 特性
 - **幂等**：可重复执行，二进制/配置变更时自动重启服务
