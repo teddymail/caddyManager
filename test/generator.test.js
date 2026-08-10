@@ -82,7 +82,7 @@ test('dnsMode=caddy 生成 dynamic a 动态上游', () => {
   }]);
   assert.match(out, /dynamic a dyn-backend\.example\.com 8080 \{/);
   assert.match(out, /refresh 30s/);
-  assert.match(out, /versions ipv4 ipv6/);
+  assert.doesNotMatch(out, /versions/); // 省略 versions，兼容旧版 Caddy
   assert.doesNotMatch(out, /reverse_proxy http:\/\/dyn-backend/);
 });
 

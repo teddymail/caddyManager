@@ -101,7 +101,7 @@ export function generateCaddyfile(rules, opts = {}) {
           const rs = String(rule.dnsResolvers).split(/[,\s]+/).filter(Boolean);
           if (rs.length) lines.push(`            resolvers ${rs.join(' ')}`);
         }
-        lines.push('            versions ipv4 ipv6');
+        // 省略 versions（Caddy 默认即 ipv4+ipv6），兼容旧版 Caddy（如 2.6.x 无该选项）
         lines.push('        }');
         for (const o of blockOpts) lines.push(`        ${o}`);
         lines.push('    }');
