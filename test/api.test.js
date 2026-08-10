@@ -356,3 +356,37 @@ test('config/log-paths: 手动指定并恢复自动', async () => {
   assert.equal(r2.status, 200);
   assert.notEqual(r2.data.accessLogSource, 'manual');
 });
+
+// ---------- 配置备份 / 自动回滚 ----------
+test('apply 生效失败自动回滚到备份', async () => {
+  const oldCfg = 'old-working-config\n';
+  fs.writeFileSync(config.caddyfilePath, oldCfg, 'utf8');
+  process.env.FAKE_FAIL = '1';
+  try {
+    const { status, data } = await call('POST', '/api/apply', {});
+    assert.equal(status, 400);
+    assert.equal(data.rolledBack, true);
+    assert.ok(data.backupId);
+    assert.ok(data.steps.includes('rollback'));
+    // 线上配置已恢复为旧配置
+    const now = fs.readFileSync(config.caddyfilePath, 'utf8');
+    assert.equal(now, oldCfg);
+  } finally {
+    delete process.env.FAKE_FAIL;
+  }
+});
+
+test('backups: 列表与手动恢复', async () => {
+  const g = await call('GET', '/api/backups');
+  assert.equal(g.status, 200);
+  assert.ok(Array.isArray(g.data.backups) && g.data.backups.length >= 1);
+  const id = g.data.backups[0].id;
+  const before = fs.readFileSync(config.caddyfilePath, 'utf8');
+  fs.writeFileSync(config.caddyfilePath, 'should-be-reverted\n', 'utf8');
+  const r = await call('POST', `/api/backups/${id}/restore`);
+  assert.equal(r.status, 200);
+  assert.equal(r.data.restored, true);
+  const content = fs.readFileSync(config.caddyfilePath, 'utf8');
+  assert.notEqual(content, 'should-be-reverted\n');
+  assert.equal(content, before);
+});

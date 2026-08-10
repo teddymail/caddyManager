@@ -133,6 +133,7 @@ node scripts/build.mjs bun-linux-x64 && scp dist/caddymanager-linux-x64 root@云
 | 🔄 动态域名跟随 | Caddy 原生 `dynamic a` 定时刷新（无需重载）+ 管理器看门狗自动改 IP 并热重载 |
 | 🌐 负载均衡 | 多上游自动 `lb_policy round_robin` |
 | 🛟 默认兜底 | 未匹配任何路由的请求自动转到 Caddy Manager 错误页（CF 风格），显示用户 IP + 网络→代理→服务主机链路 + 503 |
+| 🧯 配置回收站 | 每次应用前**自动备份**线上配置（保留 10 份）；**生效失败自动回滚** + 面板一键恢复，杜绝“瞎写挂全站” |
 | 📄 日志查看 | 面板直接看 Caddy **转发匹配日志**（方法/URI/状态/耗时）与**错误日志**（上游连接失败等），支持过滤/自动刷新 |
 | 📦 单文件二进制 | Bun 交叉编译 Linux x64/arm64 自包含 ELF，目标机零依赖 |
 | 📦 Ansible 部署 | 拷一个二进制 + systemd + 健康检查，幂等可重复执行 |
@@ -315,6 +316,8 @@ node scripts/e2e-dynamic-dns.mjs  # 端到端验证 Caddy dynamic a 自动跟随
 4. 原子写盘（tmp + rename）
 5. 生效：自定义命令 → admin API 热加载 → `caddy reload` → `caddy start`
 
-## 安全提示
+## 安全与可靠性
 
-- 本服务可改写 Caddy 配置并触发重载，**鉴权默认强制开启**：未设 `AUTH_TOKEN` 时自动生成随机令牌（启动日志可见）。请把令牌交给管理员，并建议仅在内网/VPN 内暴露 8888 端口。
+- **鉴权默认强制开启**：未设 `AUTH_TOKEN` 时自动生成随机令牌（启动日志可见）。请把令牌交给管理员，并建议仅在内网/VPN 内暴露 8888 端口。
+- **配置回收站 / 自动回滚**：每次「应用配置」写盘前自动备份当前线上 Caddyfile 到 `data/backups/`（保留 10 份）；**新配置生效失败时自动恢复旧配置并重载**，不会因写坏配置导致全站挂掉。面板 ⚙ 设置可查看备份并一键恢复；接口 `GET /api/backups`、`POST /api/backups/:id/restore`。
+- **权限预防**：启动时自检 Caddyfile 目标路径可写性并警告；`/api/status` 返回 `caddyfilePathWritable`；写盘失败会明确提示“请检查目标路径权限，或调整 CADDYFILE_PATH”。生产建议以 root 运行（Ansible/systemd 默认）。

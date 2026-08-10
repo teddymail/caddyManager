@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { generateCaddyfile } from './generator.js';
+import { backupCaddyfile, restoreBackup } from './backups.js';
 
 /** 执行命令，返回 { code, stdout, stderr }（永不 reject，除非 spawn 本身失败）。 */
 export function run(cmd, args = [], { timeoutMs = 30000, cwd } = {}) {
@@ -138,6 +139,9 @@ export async function applyConfig({ config, rules, options = {} }) {
     validated: false,
     reloaded: false,
     started: false,
+    backupId: null,
+    rolledBack: false,
+    restoredReloaded: false,
     steps: [],
     errors: [],
     stdout: '',
@@ -180,69 +184,108 @@ export async function applyConfig({ config, rules, options = {} }) {
 
   if (options.dryRun) return result;
 
-  // 3) 写盘（原子）
+  // 3) 写盘前自动备份（配置回收站：每次应用前保留一份线上配置）
+  const backup = backupCaddyfile(config.caddyfilePath, config.dataDir);
+  if (backup) {
+    result.backupId = backup.id;
+    result.steps.push(`backup(${backup.id})`);
+  }
+
+  // 4) 写盘（原子）
   try {
     writeAtomic(config.caddyfilePath, content);
     result.written = true;
     result.steps.push('write');
   } catch (err) {
-    result.errors.push(`写入失败: ${err.message}`);
+    result.errors.push(`写入失败: ${err.message}（请检查目标路径权限，或调整 CADDYFILE_PATH）`);
     return result;
   }
 
-  // 4) 生效
+  // 5) 生效（任一成功即完成；全部失败则自动回滚）
+  let applied = false;
+  let ar = { status: 0, body: '' };
+  let reload = { code: -1, stdout: '', stderr: '' };
+
   if (config.caddyReloadCmd) {
     const r = await run('/bin/sh', ['-c', config.caddyReloadCmd]);
     result.steps.push('reload(custom shell)');
     result.stdout += r.stdout;
     result.stderr += r.stderr;
-    if (r.code === 0) result.reloaded = true;
+    if (r.code === 0) { result.reloaded = true; applied = true; }
     else result.errors.push(`自定义重载命令失败(code=${r.code}): ${r.stderr.trim()}`);
-    return result;
   }
 
-  // 快速路径：admin API 热加载
-  const ar = await adminReload(content);
-  if (ar.ok) {
-    result.reloaded = true;
-    result.steps.push('reload(admin-api)');
-    return result;
+  if (!applied) {
+    // 快速路径：admin API 热加载
+    ar = await adminReload(content);
+    if (ar.ok) {
+      result.reloaded = true;
+      result.steps.push('reload(admin-api)');
+      applied = true;
+    }
   }
 
-  // CLI reload
-  const reload = await run(config.caddyBin, ['reload', '--config', config.caddyfilePath, '--adapter', 'caddyfile']);
-  result.stdout += reload.stdout;
-  result.stderr += reload.stderr;
-  if (reload.code === 0) {
-    result.reloaded = true;
+  if (!applied) {
+    // CLI reload
+    reload = await run(config.caddyBin, ['reload', '--config', config.caddyfilePath, '--adapter', 'caddyfile']);
     result.steps.push('reload(cli)');
-    return result;
+    result.stdout += reload.stdout;
+    result.stderr += reload.stderr;
+    if (reload.code === 0) { result.reloaded = true; applied = true; }
   }
 
-  // 未运行 → 尝试启动
-  if (config.caddyStartCmd) {
-    const r = await run('/bin/sh', ['-c', config.caddyStartCmd]);
-    result.steps.push('start(custom shell)');
-    result.stdout += r.stdout;
-    result.stderr += r.stderr;
-    if (r.code === 0) result.started = true;
-    else result.errors.push(`自定义启动命令失败(code=${r.code}): ${r.stderr.trim()}`);
-    return result;
+  if (!applied) {
+    // 未运行 → 尝试启动
+    if (config.caddyStartCmd) {
+      const r = await run('/bin/sh', ['-c', config.caddyStartCmd]);
+      result.steps.push('start(custom shell)');
+      result.stdout += r.stdout;
+      result.stderr += r.stderr;
+      if (r.code === 0) { result.started = true; applied = true; }
+      else result.errors.push(`自定义启动命令失败(code=${r.code}): ${r.stderr.trim()}`);
+    } else {
+      const start = await run(config.caddyBin, ['start', '--config', config.caddyfilePath, '--adapter', 'caddyfile']);
+      result.steps.push('start(cli)');
+      result.stdout += start.stdout;
+      result.stderr += start.stderr;
+      if (start.code === 0) { result.started = true; applied = true; }
+      else {
+        result.errors.push(
+          `admin API 与 CLI reload/start 均失败。可能原因：caddy 未安装、admin API 被禁用或权限不足。` +
+          `\nadmin API: ${ar.status} ${ar.body.trim()}` +
+          `\nreload stderr: ${(reload.stderr || '').trim()}` +
+          `\nstart stderr: ${(start.stderr || '').trim()}`
+        );
+      }
+    }
   }
 
-  const start = await run(config.caddyBin, ['start', '--config', config.caddyfilePath, '--adapter', 'caddyfile']);
-  result.steps.push('start(cli)');
-  result.stdout += start.stdout;
-  result.stderr += start.stderr;
-  if (start.code === 0) result.started = true;
-  else {
-    result.errors.push(
-      `admin API 与 CLI reload/start 均失败。可能原因：caddy 未安装、admin API 被禁用或权限不足。` +
-      `\nadmin API: ${ar.status} ${ar.body.trim()}` +
-      `\nreload stderr: ${(reload.stderr || '').trim()}` +
-      `\nstart stderr: ${(start.stderr || '').trim()}`
-    );
+  // 6) 全部生效方式都失败 → 自动回滚到备份（防"瞎写挂全站"）
+  if (!applied && result.backupId) {
+    try {
+      restoreBackup(config.dataDir, result.backupId, config.caddyfilePath);
+      result.rolledBack = true;
+      result.steps.push('rollback');
+      result.errors.push('⚠ 新配置生效失败，已自动回滚到上一个可用配置');
+      const oldContent = fs.readFileSync(config.caddyfilePath, 'utf8');
+      const ar2 = await adminReload(oldContent);
+      if (ar2.ok) {
+        result.restoredReloaded = true;
+        result.steps.push('rollback-reload(admin-api)');
+      } else {
+        const r2 = await run(config.caddyBin, ['reload', '--config', config.caddyfilePath, '--adapter', 'caddyfile']);
+        if (r2.code === 0) {
+          result.restoredReloaded = true;
+          result.steps.push('rollback-reload(cli)');
+        } else {
+          result.errors.push(`回滚后重载旧配置也失败: ${(r2.stderr || '').trim()}`);
+        }
+      }
+    } catch (err) {
+      result.errors.push(`自动回滚失败: ${err.message}`);
+    }
   }
+
   return result;
 }
 

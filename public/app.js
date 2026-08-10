@@ -333,6 +333,7 @@
       $('#f-fallback-status').value = c.fallbackStatus || 503;
       $('#f-log-access').value = c.accessLogSource === 'manual' ? c.caddyAccessLog : '';
       $('#f-log-error').value = c.errorLogSource === 'manual' ? c.caddyErrorLog : '';
+      loadBackups();
       const wrap = $('#cfg-candidates');
       wrap.innerHTML = '';
       for (const cand of c.candidates) {
@@ -352,6 +353,44 @@
       }
       $('#settings-modal').showModal();
     } catch (err) { toast(err.message, 'err'); }
+  }
+
+  async function loadBackups() {
+    const wrap = $('#cfg-backups');
+    if (!wrap) return;
+    try {
+      const b = await api('/api/backups');
+      wrap.innerHTML = '';
+      if (!b.backups || !b.backups.length) {
+        wrap.innerHTML = '<span class="muted">暂无备份（应用配置后自动生成）</span>';
+        return;
+      }
+      for (const bk of b.backups) {
+        const row = document.createElement('div');
+        row.className = 'cfg-cand';
+        row.style.display = 'flex';
+        row.style.justifyContent = 'space-between';
+        row.style.alignItems = 'center';
+        const time = fmtTs ? fmtTs(bk.ts / 1000) : new Date(bk.ts).toLocaleString('zh-CN', { hour12: false });
+        row.innerHTML = `<span>${esc(time)} · ${(bk.size / 1024).toFixed(1)}KB</span>`;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn';
+        btn.textContent = '恢复';
+        btn.addEventListener('click', async () => {
+          if (!confirm('确认恢复该备份？将覆盖当前 Caddyfile 并重载')) return;
+          try {
+            const r = await api(`/api/backups/${bk.id}/restore`, { method: 'POST' });
+            toast(r.reloaded ? '已恢复并重载 ✓' : (r.error || '已恢复，但重载失败'), r.reloaded ? 'ok' : 'err');
+            await refreshStatus();
+          } catch (e) { toast(e.message, 'err'); }
+        });
+        row.appendChild(btn);
+        wrap.appendChild(row);
+      }
+    } catch (err) {
+      wrap.innerHTML = `<span class="muted">${esc(err.message)}</span>`;
+    }
   }
 
   async function saveCfgPath() {

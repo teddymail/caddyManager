@@ -1,14 +1,16 @@
 import path from 'node:path';
+import fs from 'node:fs';
 import os from 'node:os';
 import dns from 'node:dns';
 import zlib from 'node:zlib';
 import { Router, sendJson, sendText, sendError, readBody, staticHandler } from './router.js';
 import { Store } from './store.js';
 import { generateCaddyfile } from './generator.js';
-import { applyConfig, caddyInstalled, caddyRunning, detectRunningCaddyConfig } from './caddy.js';
+import { applyConfig, caddyInstalled, caddyRunning, detectRunningCaddyConfig, adminReload, run } from './caddy.js';
 import { exampleRules, defaultRule, deriveUpstreamHostPort } from './util.js';
 import { saveSettings, detectCaddyfileCandidates } from './config.js';
 import { readLogTail, parseCaddyLogLine } from './logs.js';
+import { listBackups, restoreBackup, backupDirFor } from './backups.js';
 import { embeddedAssets } from './assets.generated.js';
 
 export function createApp(config, { store } = {}) {
@@ -43,6 +45,16 @@ export function createApp(config, { store } = {}) {
     rulesRespCache = { sig: null, json: null, gzip: null };
   }
 
+  // ---------- 权限自检 ----------
+  function isWritable(fileOrDir) {
+    try {
+      fs.accessSync(path.dirname(fileOrDir), fs.constants.W_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   // ---------- 鉴权 ----------
   function authorized(req) {
     if (!config.authToken) return true;
@@ -62,6 +74,10 @@ export function createApp(config, { store } = {}) {
         authEnabled: Boolean(config.authToken),
       },
       rulesCount: app.store.list().length,
+      permissions: {
+        caddyfilePathWritable: isWritable(config.caddyfilePath),
+        backupDir: backupDirFor(config.dataDir),
+      },
       dns: {
         dynamicCount: app.store.list().filter((r) => r.dnsMode && r.dnsMode !== 'off').length,
         watchEnabled: Boolean(config.dnsWatchIntervalMs),
@@ -119,6 +135,36 @@ export function createApp(config, { store } = {}) {
       caddyfilePath: config.caddyfilePath,
       source: config.caddyfilePathSource,
     });
+  });
+
+  // ---------- 配置备份 / 回滚 ----------
+  router.get('/api/backups', (req, res) => {
+    sendJson(req, res, 200, { ok: true, backups: listBackups(config.dataDir), current: config.caddyfilePath });
+  });
+
+  router.post('/api/backups/:id/restore', async (req, res) => {
+    try {
+      const content = restoreBackup(config.dataDir, req.params.id, config.caddyfilePath);
+      const ar = await adminReload(content);
+      if (ar.ok) {
+        sendJson(req, res, 200, { ok: true, restored: true, reloaded: true, target: config.caddyfilePath });
+        return;
+      }
+      const r = await run(config.caddyBin, ['reload', '--config', config.caddyfilePath, '--adapter', 'caddyfile']);
+      if (r.code === 0) {
+        sendJson(req, res, 200, { ok: true, restored: true, reloaded: true, target: config.caddyfilePath });
+      } else {
+        sendJson(req, res, 200, {
+          ok: true,
+          restored: true,
+          reloaded: false,
+          target: config.caddyfilePath,
+          error: `配置已恢复，但重载失败（${(r.stderr || '').trim() || '请手动 caddy reload'}）`,
+        });
+      }
+    } catch (err) {
+      sendError(req, res, 400, `恢复失败: ${err.message}`);
+    }
   });
 
   // ---------- Caddy 日志查看 ----------

@@ -199,6 +199,10 @@
         </label>
       </div>
       <div class="dns-panel" style="margin-top:8px">
+        <label class="muted" style="font-weight:600">配置备份 / 回滚（每次应用前自动备份，生效失败自动回滚）</label>
+        <div id="cfg-backups" class="cfg-candidates"><span class="muted">加载中…</span></div>
+      </div>
+      <div class="dns-panel" style="margin-top:8px">
         <label class="muted" style="font-weight:600">Caddy 日志路径（留空自动定位）</label>
         <label>转发匹配日志（access）
           <input id="f-log-access" placeholder="自动：/var/log/caddy/access.log 或 data/access.log" autocomplete="off" />

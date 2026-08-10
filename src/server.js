@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
 import { loadConfig } from './config.js';
 import { createApp } from './app.js';
 
@@ -16,6 +18,13 @@ server.listen(config.port, config.host, () => {
   console.log(`  Caddyfile: ${config.caddyfilePath}`);
   console.log(`  Caddy 可执行: ${config.caddyBin}`);
   console.log(`  动态 DNS 看门狗: ${config.dnsWatchIntervalMs ? `每 ${config.dnsWatchIntervalMs}ms 扫描` : '关闭'}`);
+  // 权限/依赖自检
+  try {
+    fs.accessSync(path.dirname(config.caddyfilePath), fs.constants.W_OK);
+  } catch {
+    console.log(`  ⚠ 警告: Caddyfile 目标路径不可写: ${config.caddyfilePath}`);
+    console.log(`    应用配置将无法写盘，请用 root 运行或设置 CADDYFILE_PATH 到可写目录`);
+  }
   const authSource = config.authTokenSource === 'generated' ? '自动生成' : config.authTokenSource === 'env' ? '来自 AUTH_TOKEN' : '持久化';
   console.log(`  鉴权: 已启用 (Bearer Token · ${authSource})`);
   if (config.authTokenSource === 'generated') {
