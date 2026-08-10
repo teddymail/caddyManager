@@ -390,3 +390,34 @@ test('backups: 列表与手动恢复', async () => {
   assert.notEqual(content, 'should-be-reverted\n');
   assert.equal(content, before);
 });
+
+// ---------- 系统保护规则 ----------
+test('protected 规则不可删除、不可停用', async () => {
+  const r = await call('POST', '/api/rules', {
+    name: '基础服务', domains: 'base.example.com', upstream: 'http://127.0.0.1:8888', protected: true,
+  });
+  assert.equal(r.status, 201);
+  assert.equal(r.data.rule.protected, true);
+  const del = await call('DELETE', `/api/rules/${r.data.rule.id}`);
+  assert.equal(del.status, 400);
+  assert.match(del.data.error, /保护/);
+  const tog = await call('POST', `/api/rules/${r.data.rule.id}/toggle`);
+  assert.equal(tog.status, 400);
+  assert.match(tog.data.error, /保护/);
+  // 非保护规则可正常删除
+  const n = await call('POST', '/api/rules', { name: '普通', domains: 'normal.example.com', upstream: 'http://127.0.0.1:9001' });
+  const nd = await call('DELETE', `/api/rules/${n.data.rule.id}`);
+  assert.equal(nd.status, 200);
+});
+
+test('config/self-domain: 设置并返回面板自身域名', async () => {
+  const r = await call('PUT', '/api/config/self-domain', { domain: 'panel.ykcode.top' });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.selfDomain, 'panel.ykcode.top');
+  const g = await call('GET', '/api/config');
+  assert.equal(g.data.selfDomain, 'panel.ykcode.top');
+  // 恢复空
+  await call('PUT', '/api/config/self-domain', { domain: '' });
+  const g2 = await call('GET', '/api/config');
+  assert.equal(g2.data.selfDomain, '');
+});

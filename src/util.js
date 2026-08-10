@@ -104,6 +104,9 @@ export function normalizeRule(input, { partial = false } = {}) {
   if (has('forwardHeaders')) out.forwardHeaders = Boolean(input.forwardHeaders);
   if (has('trustProxy')) out.trustProxy = Boolean(input.trustProxy);
 
+  // 受保护规则（基础服务）：不可删除、不可停用
+  if (has('protected')) out.protected = Boolean(input.protected);
+
   // ---------- 动态 DNS 相关 ----------
   if (has('dnsMode')) {
     const m = String(input.dnsMode);

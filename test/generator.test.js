@@ -166,3 +166,23 @@ test('fallbackEnabled=false 不生成兜底站点', () => {
   const out = generateCaddyfile([{ ...base }], { fallbackEnabled: false, fallbackTarget: 'http://127.0.0.1:8888' });
   assert.doesNotMatch(out, /^:80 \{/m);
 });
+
+test('selfDomain 系统保护规则：空规则列表也注入，指向自身', () => {
+  const out = generateCaddyfile([], { selfDomain: 'panel.example.com', selfUpstream: 'http://127.0.0.1:8888' });
+  assert.match(out, /panel\.example\.com \{/);
+  assert.match(out, /reverse_proxy http:\/\/127\.0\.0\.1:8888/);
+});
+
+test('selfDomain 系统保护规则：用户同域名规则被接管', () => {
+  const out = generateCaddyfile(
+    [{ ...base, domains: ['panel.example.com'], upstream: 'http://127.0.0.1:9999' }],
+    { selfDomain: 'panel.example.com', selfUpstream: 'http://127.0.0.1:8888' }
+  );
+  assert.match(out, /reverse_proxy http:\/\/127\.0\.0\.1:8888/);
+  assert.doesNotMatch(out, /reverse_proxy http:\/\/127\.0\.0\.1:9999/);
+});
+
+test('不配置 selfDomain 时不注入系统规则', () => {
+  const out = generateCaddyfile([], {});
+  assert.doesNotMatch(out, /panel\.example\.com/);
+});

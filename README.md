@@ -221,6 +221,7 @@ node src/server.js          # 默认 8888 端口
 | `FALLBACK_ENABLED` | `1` | 未匹配路由时启用默认兜底（转到 Caddy Manager 错误页） |
 | `FALLBACK_STATUS` | `503` | 兜底错误页状态码 |
 | `FALLBACK_TARGET` | `http://127.0.0.1:<PORT>` | 兜底转发目标（默认 Caddy Manager 自身） |
+| `SELF_DOMAIN` | 空 | 面板自身域名（系统保护规则，始终代理到本服务，防删除/覆盖；也可在 ⚙ 设置配置） |
 | `QUIET` | 空 | `1` 时关闭请求日志，提升吞吐 |
 
 ### REST API
@@ -321,3 +322,4 @@ node scripts/e2e-dynamic-dns.mjs  # 端到端验证 Caddy dynamic a 自动跟随
 - **鉴权默认强制开启**：未设 `AUTH_TOKEN` 时自动生成随机令牌（启动日志可见）。请把令牌交给管理员，并建议仅在内网/VPN 内暴露 8888 端口。
 - **配置回收站 / 自动回滚**：每次「应用配置」写盘前自动备份当前线上 Caddyfile 到 `data/backups/`（保留 10 份）；**新配置生效失败时自动恢复旧配置并重载**，不会因写坏配置导致全站挂掉。面板 ⚙ 设置可查看备份并一键恢复；接口 `GET /api/backups`、`POST /api/backups/:id/restore`。
 - **权限预防**：启动时自检 Caddyfile 目标路径可写性并警告；`/api/status` 返回 `caddyfilePathWritable`；写盘失败会明确提示“请检查目标路径权限，或调整 CADDYFILE_PATH”。生产建议以 root 运行（Ansible/systemd 默认）。
+- **系统保护规则（防自锁死）**：在 ⚙ 设置里配置「面板自身域名」（如 `dns.ykcode.top`，或环境变量 `SELF_DOMAIN`）后，生成的 Caddyfile **始终注入**一条「该域名 → 本服务」的规则——不存规则库、用户删除/覆盖不了，保证管理面板的访问链路永远在。规则可标记 🔒 受保护（不可删除/停用）。

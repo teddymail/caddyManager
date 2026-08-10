@@ -91,6 +91,9 @@ export function loadConfig(env = process.env) {
   const fallbackStatus = Number(env.FALLBACK_STATUS || settings.fallbackStatus || 503);
   const fallbackTarget = env.FALLBACK_TARGET || `http://127.0.0.1:${Number.parseInt(env.PORT, 10) || 8888}`;
 
+  // 面板自身域名（系统保护规则：该域名始终代理到本服务，不可被删除/覆盖）
+  const selfDomain = (settings.selfDomain || env.SELF_DOMAIN || '').trim().toLowerCase();
+
   // 鉴权（默认强制开启）：AUTH_TOKEN > 已持久化 token > 自动生成并持久化
   let authToken;
   let authTokenSource;
@@ -147,6 +150,8 @@ export function loadConfig(env = process.env) {
     fallbackEnabled,
     fallbackStatus,
     fallbackTarget,
+    selfDomain,
+    selfUpstream: `http://127.0.0.1:${Number.parseInt(env.PORT, 10) || 8888}`,
     settings,
     caddyfilePathSource,
     caddyfilePathCandidates: candidates,

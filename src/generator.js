@@ -53,6 +53,30 @@ export function generateCaddyfile(rules, opts = {}) {
       return (aWild ? 1 : 0) - (bWild ? 1 : 0);
     });
 
+  // 系统保护规则：面板自身域名始终代理到本服务（不存规则库，用户无法删除/覆盖），防止自锁死
+  const sysDomain = (opts.selfDomain || '').trim().toLowerCase();
+  if (sysDomain) {
+    const sysRule = {
+      id: '__system_self__',
+      name: 'Caddy Manager 自身（系统保护）',
+      domains: [sysDomain],
+      upstream: opts.selfUpstream || `http://127.0.0.1:${opts.port || 8888}`,
+      tls: 'auto',
+      path: '',
+      stripPrefix: false,
+      healthPath: '',
+      extra: '',
+      enabled: true,
+      forwardHeaders: true,
+      trustProxy: false,
+      protected: true,
+    };
+    // 移除用户侧与该域名冲突的启用规则（由系统规则接管，避免重复/覆盖）
+    const filtered = enabled.filter((r) => !(r.domains || []).includes(sysDomain));
+    enabled.length = 0;
+    enabled.push(...filtered, sysRule);
+  }
+
   if (!enabled.length) {
     lines.push('');
     lines.push('# （暂无启用的规则）');

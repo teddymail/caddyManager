@@ -76,23 +76,26 @@
       const tlsLabel = { auto: 'HTTPS 自动', internal: '内网自签', off: '仅 HTTP' }[r.tls] || r.tls;
       const dnsBadge = r.dnsMode && r.dnsMode !== 'off'
         ? `<span class="tag tag-dns" title="${r.dnsMode === 'caddy' ? 'Caddy dynamic a 自动跟随 IP' : '管理器看门狗自动更新 IP'}">🔄 ${r.dnsMode === 'caddy' ? '动态A' : '看门狗'}</span>` : '';
+      const protectBadge = r.protected
+        ? '<span class="tag tag-protected" title="系统保护规则（基础服务），不可删除/停用">🔒 保护</span>' : '';
       const resolved = r.dnsMode === 'manager' && Array.isArray(r.resolvedIps) && r.resolvedIps.length
         ? `<div class="muted">已解析: ${r.resolvedIps.map(esc).join(', ')}</div>` : '';
+      const rowActions = r.protected
+        ? '<span class="muted" style="font-size:12px">系统保护</span>'
+        : `<div class="row-actions">
+            <button class="btn" data-act="toggle" data-id="${r.id}">${r.enabled ? '停用' : '启用'}</button>
+            <button class="btn" data-act="edit" data-id="${r.id}">编辑</button>
+            <button class="btn" data-act="del" data-id="${r.id}" style="color:var(--danger)">删除</button>
+          </div>`;
       tr.innerHTML = `
-        <td><strong>${esc(r.name)}</strong>${dnsBadge}</td>
+        <td><strong>${esc(r.name)}</strong>${protectBadge}${dnsBadge}</td>
         <td>${r.domains.map((d) => d.startsWith('*.')
           ? `<span class="tag tag-wild" title="通配符匹配：精确域名优先于本规则">🌐 ${esc(d)}</span>`
           : `<span class="tag">${esc(d)}</span>`).join('')}</td>
         <td><code>${esc(r.upstream)}</code>${resolved}${r.path ? `<div class="muted">路径: ${esc(r.path)}</div>` : ''}</td>
         <td><span class="${tlsClass}">${tlsLabel}</span></td>
         <td><span class="dot ${r.enabled ? 'dot-on' : 'dot-off'}"></span>${r.enabled ? '启用' : '停用'}</td>
-        <td>
-          <div class="row-actions">
-            <button class="btn" data-act="toggle" data-id="${r.id}">${r.enabled ? '停用' : '启用'}</button>
-            <button class="btn" data-act="edit" data-id="${r.id}">编辑</button>
-            <button class="btn" data-act="del" data-id="${r.id}" style="color:var(--danger)">删除</button>
-          </div>
-        </td>`;
+        <td>${rowActions}</td>`;
       tbody.appendChild(tr);
     }
   }
@@ -333,6 +336,7 @@
       $('#f-fallback-status').value = c.fallbackStatus || 503;
       $('#f-log-access').value = c.accessLogSource === 'manual' ? c.caddyAccessLog : '';
       $('#f-log-error').value = c.errorLogSource === 'manual' ? c.caddyErrorLog : '';
+      $('#f-selfdomain').value = c.selfDomain || '';
       loadBackups();
       const wrap = $('#cfg-candidates');
       wrap.innerHTML = '';
@@ -404,6 +408,7 @@
         method: 'PUT',
         body: { access: $('#f-log-access').value.trim(), error: $('#f-log-error').value.trim() },
       });
+      await api('/api/config/self-domain', { method: 'PUT', body: { domain: $('#f-selfdomain').value.trim() } });
       $('#settings-modal').close();
       toast('已保存设置');
       await refreshStatus();

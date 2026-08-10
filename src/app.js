@@ -108,6 +108,8 @@ export function createApp(config, { store } = {}) {
       errorLogSource: config.errorLogSource,
       fallbackEnabled: config.fallbackEnabled,
       fallbackStatus: config.fallbackStatus,
+      selfDomain: config.selfDomain,
+      selfUpstream: config.selfUpstream,
       candidates,
     });
   });
@@ -218,6 +220,18 @@ export function createApp(config, { store } = {}) {
     });
   });
 
+  router.put('/api/config/self-domain', async (req, res) => {
+    const body = await readBody(req);
+    const domain = String((body && body.domain) || '').trim().toLowerCase();
+    if (domain && !/^[a-z0-9\u4e00-\u9fa5]([a-z0-9\u4e00-\u9fa5-]*[a-z0-9\u4e00-\u9fa5])?(\.[a-z0-9\u4e00-\u9fa5]([a-z0-9\u4e00-\u9fa5-]*[a-z0-9\u4e00-\u9fa5])?)+$/.test(domain)) {
+      return sendError(req, res, 400, '域名格式不正确');
+    }
+    config.selfDomain = domain;
+    config.settings = { ...config.settings, selfDomain: domain };
+    saveSettings(config.dataDir, config.settings);
+    sendJson(req, res, 200, { ok: true, selfDomain: domain, selfUpstream: config.selfUpstream });
+  });
+
   router.get('/api/preview', (req, res) => {
     sendText(req, res, 200, getCaddyfile());
   });
@@ -262,7 +276,7 @@ export function createApp(config, { store } = {}) {
 
   router.delete('/api/rules/:id', (req, res) => {
     const r = app.store.remove(req.params.id);
-    if (!r.ok) return sendError(req, res, 404, r.error);
+    if (!r.ok) return sendError(req, res, r.error === '规则不存在' ? 404 : 400, r.error);
     invalidateRulesCache();
     sendJson(req, res, 200, { ok: true, deleted: r.rule.id });
   });

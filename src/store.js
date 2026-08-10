@@ -97,6 +97,7 @@ export class Store {
   remove(id) {
     const idx = this.rules.findIndex((x) => x.id === id);
     if (idx === -1) return { ok: false, error: '规则不存在' };
+    if (this.rules[idx].protected) return { ok: false, error: '该规则为系统保护规则（基础服务），不可删除' };
     const [removed] = this.rules.splice(idx, 1);
     this.persist();
     return { ok: true, rule: removed };
@@ -105,6 +106,9 @@ export class Store {
   toggle(id) {
     const idx = this.rules.findIndex((x) => x.id === id);
     if (idx === -1) return { ok: false, error: '规则不存在' };
+    if (this.rules[idx].protected && this.rules[idx].enabled) {
+      return { ok: false, error: '该规则为系统保护规则（基础服务），不可停用' };
+    }
     const nextEnabled = !this.rules[idx].enabled;
     if (nextEnabled) {
       const next = { ...this.rules[idx], enabled: true };
