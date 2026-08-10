@@ -254,7 +254,7 @@ export function createApp(config, { store } = {}) {
 
   router.post('/api/rules', async (req, res) => {
     const body = await readBody(req);
-    const r = app.store.create(body);
+    const r = await app.store.create(body);
     if (!r.ok) return sendError(req, res, 400, r.error, { conflicts: r.conflicts });
     invalidateRulesCache();
     sendJson(req, res, 201, { ok: true, rule: r.rule });
@@ -268,21 +268,21 @@ export function createApp(config, { store } = {}) {
 
   router.put('/api/rules/:id', async (req, res) => {
     const body = await readBody(req);
-    const r = app.store.update(req.params.id, body);
+    const r = await app.store.update(req.params.id, body);
     if (!r.ok) return sendError(req, res, r.error === '规则不存在' ? 404 : 400, r.error, { conflicts: r.conflicts });
     invalidateRulesCache();
     sendJson(req, res, 200, { ok: true, rule: r.rule });
   });
 
-  router.delete('/api/rules/:id', (req, res) => {
-    const r = app.store.remove(req.params.id);
+  router.delete('/api/rules/:id', async (req, res) => {
+    const r = await app.store.remove(req.params.id);
     if (!r.ok) return sendError(req, res, r.error === '规则不存在' ? 404 : 400, r.error);
     invalidateRulesCache();
     sendJson(req, res, 200, { ok: true, deleted: r.rule.id });
   });
 
-  router.post('/api/rules/:id/toggle', (req, res) => {
-    const r = app.store.toggle(req.params.id);
+  router.post('/api/rules/:id/toggle', async (req, res) => {
+    const r = await app.store.toggle(req.params.id);
     if (!r.ok) return sendError(req, res, r.error === '规则不存在' ? 404 : 400, r.error, { conflicts: r.conflicts });
     invalidateRulesCache();
     sendJson(req, res, 200, { ok: true, rule: r.rule });
@@ -369,10 +369,11 @@ export function createApp(config, { store } = {}) {
 
 
   // ---------- 示例 ----------
-  router.post('/api/examples', (req, res) => {
-    const rules = app.store.replaceAll(exampleRules());
+  router.post('/api/examples', async (req, res) => {
+    const r = await app.store.replaceAll(exampleRules());
+    if (!r.ok) return sendError(req, res, 500, r.error);
     invalidateRulesCache();
-    sendJson(req, res, 200, { ok: true, rules });
+    sendJson(req, res, 200, { ok: true, rules: r.rules });
   });
 
   // ---------- 元信息（表单模板） ----------

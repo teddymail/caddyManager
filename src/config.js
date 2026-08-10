@@ -32,10 +32,20 @@ export function loadSettings(dataDir) {
   return {};
 }
 
-/** 持久化运行时设置（原子写盘）。 */
+/** 持久化运行时设置（原子写盘；写前自动备份旧版本到 data/backups/，保留 10 份）。 */
 export function saveSettings(dataDir, settings) {
   fs.mkdirSync(dataDir, { recursive: true });
   const file = path.join(dataDir, 'settings.json');
+  if (fs.existsSync(file)) {
+    try {
+      const backupDir = path.join(dataDir, 'backups');
+      fs.mkdirSync(backupDir, { recursive: true });
+      const snap = path.join(backupDir, `settings-${Date.now()}.json`);
+      fs.copyFileSync(file, snap);
+      const snaps = fs.readdirSync(backupDir).filter((f) => f.startsWith('settings-')).sort();
+      while (snaps.length > 10) fs.unlinkSync(path.join(backupDir, snaps.shift()));
+    } catch { /* 备份失败不影响写盘 */ }
+  }
   const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
   fs.writeFileSync(tmp, JSON.stringify(settings, null, 2) + '\n', 'utf8');
   fs.renameSync(tmp, file);

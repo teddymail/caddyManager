@@ -421,3 +421,10 @@ test('config/self-domain: 设置并返回面板自身域名', async () => {
   const g2 = await call('GET', '/api/config');
   assert.equal(g2.data.selfDomain, '');
 });
+
+// ---------- 数据落盘可靠性 / 备份 ----------
+test('settings 写盘自动生成备份', async () => {
+  await call('PUT', '/api/config/fallback', { enabled: true, status: 503 });
+  const files = fs.readdirSync(path.join(tmp, 'backups')).filter((f) => f.startsWith('settings-'));
+  assert.ok(files.length >= 1, '应生成 settings 备份');
+});

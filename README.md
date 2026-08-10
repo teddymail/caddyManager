@@ -323,3 +323,10 @@ node scripts/e2e-dynamic-dns.mjs  # 端到端验证 Caddy dynamic a 自动跟随
 - **配置回收站 / 自动回滚**：每次「应用配置」写盘前自动备份当前线上 Caddyfile 到 `data/backups/`（保留 10 份）；**新配置生效失败时自动恢复旧配置并重载**，不会因写坏配置导致全站挂掉。面板 ⚙ 设置可查看备份并一键恢复；接口 `GET /api/backups`、`POST /api/backups/:id/restore`。
 - **权限预防**：启动时自检 Caddyfile 目标路径可写性并警告；`/api/status` 返回 `caddyfilePathWritable`；写盘失败会明确提示“请检查目标路径权限，或调整 CADDYFILE_PATH”。生产建议以 root 运行（Ansible/systemd 默认）。
 - **系统保护规则（防自锁死）**：在 ⚙ 设置里配置「面板自身域名」（如 `dns.ykcode.top`，或环境变量 `SELF_DOMAIN`）后，生成的 Caddyfile **始终注入**一条「该域名 → 本服务」的规则——不存规则库、用户删除/覆盖不了，保证管理面板的访问链路永远在。规则可标记 🔒 受保护（不可删除/停用）。
+- **数据落盘可靠性**：规则/设置写盘采用原子写（tmp+rename），**每次写盘前自动备份**旧版本到 `data/backups/`（rules/settings 各保留 10 份）；**写盘失败不再静默**——会明确报「数据落盘失败」并回滚内存，杜绝“看似成功实则丢失”。
+
+## 部署注意事项（防丢数据）
+
+- **`data/` 目录是唯一的持久数据目录**（规则、设置、令牌、备份都在这），**不在 git 中**（被 `.gitignore` 保护，防止令牌/规则泄露）。
+- **更新部署时只替换二进制**（或 `git pull` 源码），**必须保留 `data/` 目录**；切勿用「覆盖整个项目目录 / 重新 clone 到新目录」的方式更新，否则规则和配置会丢失。
+- 更新前建议备份整个 `data/`（含 `backups/`）：`tar czf data-backup.tgz data/`。
