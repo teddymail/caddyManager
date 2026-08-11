@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import dns from 'node:dns';
 import zlib from 'node:zlib';
+import { createHash } from 'node:crypto';
 import { Router, sendJson, sendText, sendError, readBody, staticHandler } from './router.js';
 import { Store } from './store.js';
 import { generateCaddyfile } from './generator.js';
@@ -108,6 +109,7 @@ export function createApp(config, { store } = {}) {
       errorLogSource: config.errorLogSource,
       fallbackEnabled: config.fallbackEnabled,
       fallbackStatus: config.fallbackStatus,
+      gatewayId: config.gatewayId,
       selfDomain: config.selfDomain,
       selfUpstream: config.selfUpstream,
       candidates,
@@ -393,6 +395,140 @@ export function createApp(config, { store } = {}) {
   function escHtml(v) {
     return String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
+  // ---------- 零信任网关错误页面（后端异常时显示三节点链路状态） ----------
+  function renderGatewayErrorPage(req, res) {
+    const url = new URL(req.url, 'http://localhost');
+    const q = url.searchParams;
+    const xff = req.headers['x-forwarded-for'] || '';
+    const userIp = q.get('ip') || (xff.split(',')[0] || '').trim() || req.headers['x-real-ip'] || req.socket.remoteAddress || '-';
+    const backendStatus = parseInt(q.get('status')) || 502;
+    const originalHost = q.get('host') || req.headers.host || '-';
+    const originalPath = q.get('path') || '/';
+    const gatewayId = q.get('gateway_id') || req.headers['x-gateway-id'] || config.gatewayId || 'gw-' + Date.now().toString(36);
+    const rawLogId = q.get('log_id') || req.headers['x-request-id'] || 'log-' + Math.random().toString(36).substr(2, 9);
+    // 展示用短 ID：SHA-256 摘要取前 12 位十六进制；完整 ID 保留在 Caddy access log 与 X-Request-ID 中供对账
+    const logId = createHash('sha256').update(rawLogId).digest('hex').slice(0, 12);
+    const now = new Date().toLocaleString('zh-CN', { hour12: false });
+    if (!config.quiet) console.log(`[gateway-trace] 追踪ID=${logId} 完整ID=${rawLogId} 网关=${gatewayId} status=${backendStatus} host=${originalHost} path=${originalPath}`);
+
+    const statusText = {
+      400: 'Bad Request',
+      401: 'Unauthorized',
+      403: 'Forbidden',
+      404: 'Not Found',
+      500: 'Internal Server Error',
+      502: 'Bad Gateway',
+      503: 'Service Unavailable',
+      504: 'Gateway Timeout'
+    }[backendStatus] || 'Error';
+
+    const html = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${backendStatus} · ${statusText} · 零信任网关</title>
+<style>
+body{background:#0f172a;color:#e2e8f0;font-family:-apple-system,"PingFang SC","Microsoft YaHei",ui-sans-serif,system-ui,sans-serif;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box}
+.container{max-width:880px;width:100%}
+.header{text-align:center;margin-bottom:32px}
+.gateway-badge{display:inline-flex;align-items:center;gap:6px;background:#1e293b;border:1px solid #334155;border-radius:20px;padding:6px 14px;font-size:12px;color:#94a3b8;margin-top:12px}
+.gateway-badge svg{width:14px;height:14px}
+.chain{display:flex;flex-direction:row;align-items:stretch;justify-content:center;gap:10px;margin:32px 0;flex-wrap:nowrap}
+.node{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;text-align:center;background:#1e293b;border-radius:12px;padding:16px 14px;border:1px solid #334155}
+.node.ok{border-color:#22c55e;background:rgba(34,197,94,0.1)}
+.node.ok .node-status{color:#22c55e}
+.node.error{border-color:#ef4444;background:rgba(239,68,68,0.1)}
+.node.error .node-status{color:#ef4444}
+.node-icon{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:12px;flex-shrink:0}
+.node.ok .node-icon{background:rgba(34,197,94,0.2)}
+.node.error .node-icon{background:rgba(239,68,68,0.2)}
+.node-content{flex:1;width:100%}
+.node-name{font-size:20px;font-weight:700;color:#f1f5f9;margin-bottom:4px}
+.node-status{font-size:13px;margin-top:4px}
+.node-meta{font-size:11px;color:#64748b;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:8px;word-break:break-all}
+.connector{width:28px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.connector-line{color:#475569;font-size:22px;line-height:1;font-weight:600}
+.connector-line::before{content:'→'}
+.info-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;background:#1e293b;border-radius:12px;padding:16px;border:1px solid #334155}
+.info-item{font-size:12px}
+.info-label{color:#64748b;margin-bottom:4px}
+.info-value{color:#e2e8f0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all}
+.footer{text-align:center;margin-top:24px;font-size:12px;color:#64748b}
+@media(max-width:600px){
+.node-name{font-size:16px}
+.chain{flex-direction:column}
+.connector{width:100%;height:24px;transform:rotate(90deg)}
+.node{padding:12px 16px}
+.node-icon{width:40px;height:40px;font-size:16px}
+}
+</style></head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="gateway-badge">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      Caddy Manager
+    </div>
+  </div>
+
+  <div class="chain">
+    <div class="node ok">
+      <div class="node-icon">🌐</div>
+      <div class="node-content">
+        <div class="node-name">你</div>
+        <div class="node-status">✓ 已正常</div>
+        <div class="node-meta">${escHtml(userIp)}<br>${escHtml(os.hostname())}</div>
+      </div>
+    </div>
+
+    <div class="connector"><div class="connector-line"></div></div>
+
+    <div class="node ok">
+      <div class="node-icon">🛡️</div>
+      <div class="node-content">
+        <div class="node-name">网关</div>
+        <div class="node-status">✓ 正常</div>
+        <div class="node-meta">Caddy Manager</div>
+      </div>
+    </div>
+
+    <div class="connector"><div class="connector-line"></div></div>
+
+    <div class="node error">
+      <div class="node-icon">📦</div>
+      <div class="node-content">
+        <div class="node-name">服务</div>
+        <div class="node-status">✗ ${backendStatus} ${statusText}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="info-grid">
+    <div class="info-item">
+      <div class="info-label">请求路径</div>
+      <div class="info-value">${escHtml(originalPath)}</div>
+    </div>
+    <div class="info-item">
+      <div class="info-label">目标域名</div>
+      <div class="info-value">${escHtml(originalHost)}</div>
+    </div>
+    <div class="info-item">
+      <div class="info-label">日志追踪 ID</div>
+      <div class="info-value">${escHtml(logId)}</div>
+    </div>
+    <div class="info-item">
+      <div class="info-label">时间</div>
+      <div class="info-value">${escHtml(now)}</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    如需帮助，请联系管理员并提供日志追踪 ID<br>
+    Powered by Caddy Manager
+  </div>
+</div>
+</body></html>`;
+    sendText(req, res, backendStatus, html, 'text/html; charset=utf-8');
+  }
   function renderFallbackPage(req, res) {
     const url = new URL(req.url, 'http://localhost');
     const xff = req.headers['x-forwarded-for'] || '';
@@ -462,6 +598,10 @@ a{color:#60a5fa}
       if (req.method === 'GET') {
         if (url.pathname === '/__fallback') {
           renderFallbackPage(req, res); // Caddy 兜底转发 -> 错误页
+          return log();
+        }
+        if (url.pathname === '/__gateway-error') {
+          renderGatewayErrorPage(req, res); // 零信任网关错误页（后端异常）
           return log();
         }
         if (staticRoute(req, res)) return log();

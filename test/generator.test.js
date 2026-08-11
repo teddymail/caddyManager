@@ -201,3 +201,70 @@ test('不配置 selfDomain 时不注入系统规则', () => {
   const out = generateCaddyfile([], {});
   assert.doesNotMatch(out, /panel\.example\.com/);
 });
+
+// ---------- 零信任网关错误页 ----------
+test('零信任网关：注入 /__gateway-error 路由与 handle_response 4xx/5xx 拦截', () => {
+  const out = generateCaddyfile([base], { selfUpstream: 'http://127.0.0.1:8888' });
+  assert.match(out, /handle \/__gateway-error \{/);
+  assert.match(out, /handle_errors \{/);
+  assert.match(out, /@4xx status 400 /);
+  assert.match(out, /@5xx status 500 /);
+  assert.match(out, /handle_response @4xx \{/);
+  assert.match(out, /handle_response @5xx \{/);
+  assert.match(out, /rewrite \* \/__gateway-error\?status=\{rp\.status_code\}/);
+  assert.match(out, /rewrite \* \/__gateway-error\?status=\{http\.error\.status_code\}/);
+  // 追踪参数：状态/上游/域名/路径/IP/日志ID/网关ID 随重写传递
+  assert.match(out, /status=\{rp\.status_code\}/);
+  assert.match(out, /upstream=\{http\.reverse_proxy\.upstream\.host\}/);
+  assert.match(out, /host=\{http\.request\.host\}/);
+  assert.match(out, /path=\{http\.request\.uri\.path\}/);
+  assert.match(out, /ip=\{http\.request\.remote\.host\}/);
+  assert.match(out, /log_id=\{http\.request\.uuid\}/);
+  assert.match(out, /gateway_id=caddymanager/);
+});
+
+test('零信任网关：转发头携带网关 ID 与请求日志 ID', () => {
+  const out = generateCaddyfile([base], { selfUpstream: 'http://127.0.0.1:8888' });
+  assert.match(out, /header_up X-Gateway-ID "caddymanager"/);
+  assert.match(out, /header_up X-Request-ID \{http\.request\.uuid\}/);
+});
+
+test('零信任网关：GATEWAY_ID 可配置，注入 header 与追踪参数（含兜底站点）', () => {
+  const out = generateCaddyfile([base], { selfUpstream: 'http://127.0.0.1:8888', fallbackTarget: 'http://127.0.0.1:8888', gatewayId: 'gw-shanghai-1' });
+  assert.match(out, /header_up X-Gateway-ID "gw-shanghai-1"/);
+  assert.match(out, /gateway_id=gw-shanghai-1/);
+  assert.doesNotMatch(out, /gateway_id=caddymanager/);
+  // 兜底 :80 站点同样携带网关 ID 与请求日志 ID
+  assert.match(out, /:80 \{[\s\S]*header_up X-Gateway-ID "gw-shanghai-1"[\s\S]*header_up X-Request-ID \{http\.request\.uuid\}/);
+});
+
+test('零信任网关：forwardHeaders=false 时不注入追踪头', () => {
+  const out = generateCaddyfile([{ ...base, forwardHeaders: false }], { selfUpstream: 'http://127.0.0.1:8888' });
+  // 规则代理块不注入追踪头；仅错误页路由 / handle_errors / handle_response 4xx+5xx（内部管道）各保留一份
+  assert.equal((out.match(/X-Gateway-ID/g) || []).length, 4);
+  assert.equal((out.match(/X-Request-ID/g) || []).length, 4);
+});
+
+test('零信任网关：未配置 selfUpstream/fallbackTarget 时不注入错误页路由', () => {
+  const out = generateCaddyfile([base]);
+  assert.doesNotMatch(out, /__gateway-error/);
+  assert.doesNotMatch(out, /handle_response/);
+  assert.doesNotMatch(out, /handle_errors/);
+});
+
+test('零信任网关：系统保护规则（面板自身）不做错误拦截', () => {
+  const out = generateCaddyfile([], { selfDomain: 'panel.example.com', selfUpstream: 'http://127.0.0.1:8888' });
+  assert.match(out, /panel\.example\.com \{/);
+  assert.doesNotMatch(out, /__gateway-error/);
+  assert.doesNotMatch(out, /handle_response/);
+  assert.doesNotMatch(out, /handle_errors/);
+});
+
+test('零信任网关：动态 DNS 规则同样注入错误拦截', () => {
+  const out = generateCaddyfile([{
+    ...base, upstream: 'http://dyn-backend.example.com:8080',
+    dnsMode: 'caddy', dnsHost: '', lookupInterval: 30, dnsResolvers: '8.8.8.8, 1.1.1.1',
+  }], { selfUpstream: 'http://127.0.0.1:8888' });
+  assert.match(out, /handle_response @5xx \{/);
+  assert.match(out, /resolvers 8\.8\.8\.8 1\.1\.1\.1/);
+});

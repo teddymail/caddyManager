@@ -17,6 +17,7 @@ import crypto from 'node:crypto';
  *   CADDY_START_CMD  自定义启动命令（例如 "systemctl restart caddy"），caddy 未运行时使用
  *   AUTH_TOKEN      访问 API 的 Bearer Token，为空表示不鉴权
  *   GLOBAL_TLS_EMAIL 全局 ACME 邮箱（写入 Caddyfile 全局块）
+ *   GATEWAY_ID       零信任网关 ID（写入 X-Gateway-ID 头与错误页，默认 caddymanager）
  *   SEED_EXAMPLES   首次启动时写入示例规则（1=是）
  *   DNS_WATCH_INTERVAL_MS 动态 DNS 看门狗扫描间隔（毫秒，默认 5000；manager 模式规则按各自 dnsInterval 节流）
  */
@@ -104,6 +105,9 @@ export function loadConfig(env = process.env) {
   // 面板自身域名（系统保护规则：该域名始终代理到本服务，不可被删除/覆盖）
   const selfDomain = (settings.selfDomain || env.SELF_DOMAIN || '').trim().toLowerCase();
 
+  // 零信任网关 ID：多网关实例时用于链路区分，经 X-Gateway-ID 头下发给后端与错误页
+  const gatewayId = String(env.GATEWAY_ID || 'caddymanager').trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '-') || 'caddymanager';
+
   // 鉴权（默认强制开启）：AUTH_TOKEN > 已持久化 token > 自动生成并持久化
   let authToken;
   let authTokenSource;
@@ -161,6 +165,7 @@ export function loadConfig(env = process.env) {
     fallbackStatus,
     fallbackTarget,
     selfDomain,
+    gatewayId,
     selfUpstream: `http://127.0.0.1:${Number.parseInt(env.PORT, 10) || 8888}`,
     settings,
     caddyfilePathSource,

@@ -4,6 +4,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from '../src/config.js';
 import { createApp } from '../src/app.js';
@@ -427,4 +428,63 @@ test('settings 写盘自动生成备份', async () => {
   await call('PUT', '/api/config/fallback', { enabled: true, status: 503 });
   const files = fs.readdirSync(path.join(tmp, 'backups')).filter((f) => f.startsWith('settings-'));
   assert.ok(files.length >= 1, '应生成 settings 备份');
+});
+
+// ---------- 零信任网关错误页 ----------
+test('零信任网关错误页 /__gateway-error 渲染三节点链路（状态/IP/日志ID/网关ID，不暴露后端地址）', async () => {
+  const res = await fetch(base + '/__gateway-error?status=502&upstream=10.0.0.2:8080&host=api.example.com&path=/api/user&ip=8.8.4.4&log_id=log-test-123&gateway_id=caddymanager', {
+    headers: { 'X-Forwarded-For': '9.9.9.9' },
+  });
+  assert.equal(res.status, 502);
+  const html = await res.text();
+  assert.match(html, /零信任网关/);
+  assert.match(html, /你/);
+  assert.match(html, /网关/);
+  assert.match(html, /服务/);
+  // 卡片只显示 你/网关/服务，不再展示 浏览器/零信任网关/后端服务器 名字行
+  assert.doesNotMatch(html, />浏览器</);
+  assert.doesNotMatch(html, />后端服务器</);
+  // 查询参数优先于 header（X-Forwarded-For 9.9.9.9 应被 ip=8.8.4.4 覆盖）
+  assert.match(html, /8\.8\.4\.4/);
+  assert.doesNotMatch(html, /9\.9\.9\.9/);
+  // 后端内网地址不得展示给终端用户
+  assert.doesNotMatch(html, /10\.0\.0\.2:8080/);
+  assert.doesNotMatch(html, /内网地址不公开/);
+  // 日志 ID 展示 SHA-256 摘要前 12 位，不展示完整原始 ID
+  const digest = createHash('sha256').update('log-test-123').digest('hex').slice(0, 12);
+  assert.match(html, new RegExp(digest));
+  assert.doesNotMatch(html, /log-test-123/);
+  // 网关 ID 不展示在页面上（仅内部 header / 控制台对账）
+  assert.doesNotMatch(html, /caddymanager/);
+  assert.match(html, /api\.example\.com/);
+  assert.match(html, /api\/user/);
+});
+
+test('零信任网关错误页：无查询参数时回退 header/IP 与日志 ID（网关 ID 不展示）', async () => {
+  const res = await fetch(base + '/__gateway-error', {
+    headers: { 'X-Forwarded-For': '8.8.4.4', 'X-Gateway-ID': 'gw-edge-1', 'X-Request-ID': 'log-abc' },
+  });
+  assert.equal(res.status, 502);
+  const html = await res.text();
+  assert.match(html, /8\.8\.4\.4/);
+  assert.doesNotMatch(html, /gw-edge-1/);
+  const digest = createHash('sha256').update('log-abc').digest('hex').slice(0, 12);
+  assert.match(html, new RegExp(digest));
+  assert.doesNotMatch(html, /log-abc/);
+});
+
+test('零信任网关错误页：无参数时正常渲染且不展示网关 ID', async () => {
+  const res = await fetch(base + '/__gateway-error');
+  assert.equal(res.status, 502);
+  const html = await res.text();
+  assert.match(html, /你/);
+  assert.match(html, /网关/);
+  assert.match(html, /服务/);
+  assert.doesNotMatch(html, /caddymanager/);
+});
+
+test('/api/config 返回 gatewayId（默认 caddymanager）', async () => {
+  const { status, data } = await call('GET', '/api/config');
+  assert.equal(status, 200);
+  assert.equal(data.gatewayId, 'caddymanager');
 });

@@ -190,6 +190,23 @@ node src/server.js          # 默认 8888 端口
 
 同时展示请求方法/路径/域名/时间，提示"没有匹配到任何转发规则"。可在 ⚙ 设置里**开关兜底**和**修改状态码**（400~599）；`FALLBACK_ENABLED` / `FALLBACK_STATUS` / `FALLBACK_TARGET` 环境变量可覆盖。
 
+### 零信任网关错误页（后端异常链路追踪）
+
+所有站点（每个被网关命中的网站）自动注入零信任网关错误页：**后端返回 4xx/5xx（如 404、500）或连接失联（502）时，不再裸奔显示后端错误，而是重写到 Caddy Manager 渲染的三节点链路诊断页**，方便一眼定位问题出在哪一跳：
+
+```
+你      ✓ 已正常（用户 IP + 主机名）
+网关    ✓ 正常（Caddy Manager）
+服务    ✗ 404/500/502（错误码；不展示后端内网地址）
+```
+
+页面同时展示请求路径、目标域名、**日志追踪 ID**、时间；管理员可凭日志追踪 ID 在「📄 Caddy 日志」里定位对应请求。页面展示的日志追踪 ID 是完整请求 ID 的 **SHA-256 摘要（前 12 位十六进制）**，简短高效；完整 ID 保留在 Caddy access log 的 `uuid` 字段与下发给后端的 `X-Request-ID` 头中，Manager 控制台会打印 `[gateway-trace] 追踪ID=… 完整ID=…` 一行用于对账。出于安全考虑，**后端内网地址不会展示给终端用户**（仅经内部管道携带 `upstream` 供日志定位）。链路信息全程向下游传递：
+
+- **向下游（后端）**：`X-Real-IP`（用户 IP）、`X-Request-ID`（请求日志 ID）、`X-Gateway-ID`（网关 ID）
+- **回传（错误页）**：网关经 `handle_response` / `handle_errors` 重写到 `/__gateway-error`，以查询参数携带 `status` / `upstream` / `host` / `path` / `ip` / `log_id` / `gateway_id`
+
+网关 ID 默认 `caddymanager`，多网关实例可用环境变量 `GATEWAY_ID` 区分；`forwardHeaders=false` 的规则不注入追踪头。
+
 ### Caddyfile 目标路径（自动定位 + 手动指定）
 
 生成的目标 Caddyfile 路径按优先级自动定位：
@@ -212,6 +229,7 @@ node src/server.js          # 默认 8888 端口
 | `CADDYFILE_PATH` | 自动定位 | 生成的目标 Caddyfile；**留空自动定位**：`/etc/caddy/Caddyfile` → `~/.config/caddy/Caddyfile` → `data/Caddyfile`，也可在面板 ⚙ 设置里手动指定 |
 | `CADDY_RELOAD_CMD` | 空 | 自定义生效命令，如 `systemctl reload caddy`（优先于 admin API / caddy reload） |
 | `CADDY_START_CMD` | 空 | 自定义启动命令，如 `systemctl restart caddy` |
+| `GATEWAY_ID` | `caddymanager` | 零信任网关 ID：写入 `X-Gateway-ID` 头下发给后端，并显示在网关错误页（多网关实例时用于区分） |
 | `AUTH_TOKEN` | 自动生成 | API Bearer Token；**Ansible/systemd 注入优先**（有注入用注入的），**仅完全未设置时才自动生成** 32 位随机令牌（打印在启动日志、持久化到 `data/settings.json`） |
 | `GLOBAL_TLS_EMAIL` | 空 | 全局 ACME 邮箱 |
 | `DNS_WATCH_INTERVAL_MS` | `5000` | 看门狗扫描间隔 |

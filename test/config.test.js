@@ -28,3 +28,10 @@ test('authToken 优先级：Ansible/环境变量注入 > 持久化 > 自动生�
   assert.equal(c4.authToken, 'ansible-token-2');
   assert.equal(c4.authTokenSource, 'env');
 });
+
+test('GATEWAY_ID 环境变量设置零信任网关 ID（默认 caddymanager，非法字符归一化）', () => {
+  const c1 = loadConfig({ DATA_DIR: tmp });
+  assert.equal(c1.gatewayId, 'caddymanager');
+  const c2 = loadConfig({ DATA_DIR: tmp, GATEWAY_ID: 'GW Shanghai-1' });
+  assert.equal(c2.gatewayId, 'gw-shanghai-1');
+});

@@ -489,12 +489,30 @@
     } catch (err) { toast(err.message, 'err'); }
   }
 
+  // ---------- 零信任错误页预览 ----------
+  async function openGatewayPreview() {
+    try {
+      const c = await api('/api/config');
+      const q = new URLSearchParams({
+        status: '500',
+        upstream: '127.0.0.1:8080',
+        host: 'api.example.com',
+        path: '/api/v1/users',
+        ip: '203.0.113.42',
+        log_id: `preview-${Date.now().toString(36)}`,
+        gateway_id: c.gatewayId || 'caddymanager',
+      });
+      window.open(`/__gateway-error?${q}`, '_blank');
+    } catch (err) { toast(err.message, 'err'); }
+  }
+
   // ---------- 事件绑定 ----------
   function bind() {
     $('#btn-new').addEventListener('click', () => openRuleModal(null));
     $('#btn-examples').addEventListener('click', loadExamples);
     $('#btn-empty-examples').addEventListener('click', loadExamples);
     $('#btn-preview').addEventListener('click', showPreview);
+    $('#btn-gw-preview').addEventListener('click', openGatewayPreview);
     $('#btn-validate').addEventListener('click', validateOnly);
     $('#btn-apply').addEventListener('click', applyNow);
     $('#btn-copy').addEventListener('click', async () => {
