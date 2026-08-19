@@ -80,6 +80,8 @@
         ? '<span class="tag tag-protected" title="系统保护规则（基础服务），不可删除/停用">🔒 保护</span>' : '';
       const resolved = r.dnsMode === 'manager' && Array.isArray(r.resolvedIps) && r.resolvedIps.length
         ? `<div class="muted">已解析: ${r.resolvedIps.map(esc).join(', ')}</div>` : '';
+      const dnsError = r.dnsMode === 'manager' && r.lastError
+        ? `<div class="muted" style="color:var(--danger)" title="${esc(r.lastError)}">⚠ 看门狗: ${esc(r.lastError)}</div>` : '';
       const rowActions = r.protected
         ? '<span class="muted" style="font-size:12px">系统保护</span>'
         : `<div class="row-actions">
@@ -92,7 +94,7 @@
         <td>${r.domains.map((d) => d.startsWith('*.')
           ? `<span class="tag tag-wild" title="通配符匹配：精确域名优先于本规则">🌐 ${esc(d)}</span>`
           : `<span class="tag">${esc(d)}</span>`).join('')}</td>
-        <td><code>${esc(r.upstream)}</code>${resolved}${r.path ? `<div class="muted">路径: ${esc(r.path)}</div>` : ''}</td>
+        <td><code>${esc(r.upstream)}</code>${resolved}${dnsError}${r.path ? `<div class="muted">路径: ${esc(r.path)}</div>` : ''}</td>
         <td><span class="${tlsClass}">${tlsLabel}</span></td>
         <td><span class="dot ${r.enabled ? 'dot-on' : 'dot-off'}"></span>${r.enabled ? '启用' : '停用'}</td>
         <td>${rowActions}</td>`;

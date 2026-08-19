@@ -1,6 +1,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import dgram from 'node:dgram';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -171,6 +172,121 @@ test('refresh-dns：manager 模式规则自动解析并写回 resolvedIps', asyn
   // 再次刷新：无变化、不触发 apply
   const r2 = await call('POST', '/api/refresh-dns');
   assert.equal(r2.data.changed.length, 0);
+});
+
+// 迷你 UDP DNS 服务器：固定返回 A 记录，用于测试自定义 resolver 路径
+function startFakeDns(answers) {
+  const socket = dgram.createSocket('udp4');
+  socket.on('message', (msg, rinfo) => {
+    const id = msg.readUInt16BE(0);
+    let off = 12;
+    const labels = [];
+    while (off < msg.length) {
+      const len = msg[off++];
+      if (len === 0) break;
+      labels.push(msg.subarray(off, off + len).toString('ascii'));
+      off += len;
+    }
+    const qtype = msg.readUInt16BE(off);
+    const qclass = msg.readUInt16BE(off + 2);
+    const qname = labels.join('.');
+    const ips = answers[qname] || ['127.0.0.9'];
+
+    const res = Buffer.alloc(512);
+    res.writeUInt16BE(id, 0);
+    res.writeUInt16BE(0x8180, 2);
+    res.writeUInt16BE(1, 4);
+    res.writeUInt16BE(ips.length, 6);
+    let o = 12;
+    for (const l of labels) { res.writeUInt8(l.length, o++); res.write(l, o, 'ascii'); o += l.length; }
+    res.writeUInt8(0, o++);
+    res.writeUInt16BE(qtype, o); o += 2;
+    res.writeUInt16BE(qclass, o); o += 2;
+    for (const ip of ips) {
+      res.writeUInt16BE(0xc00c, o); o += 2;   // 指针指向问题名
+      res.writeUInt16BE(1, o); o += 2;        // A
+      res.writeUInt16BE(1, o); o += 2;        // IN
+      res.writeUInt32BE(30, o); o += 4;       // TTL
+      res.writeUInt16BE(4, o); o += 2;        // RDLENGTH
+      for (const p of ip.split('.').map(Number)) res.writeUInt8(p, o++);
+    }
+    socket.send(res.subarray(0, o), rinfo.port, rinfo.address);
+  });
+  return new Promise((resolve) => {
+    socket.bind(0, '127.0.0.1', () => resolve({ socket, port: socket.address().port }));
+  });
+}
+
+test('refresh-dns：manager 模式 + 自定义 resolver（回归：dns.Resolver 需用 promises 版）', async () => {
+  const dnsServer = await startFakeDns({ 'dynresolver.test': ['127.0.0.9'] });
+  try {
+    const { data: created } = await call('POST', '/api/rules', {
+      name: '动态后端-自定义DNS',
+      domains: ['dynresolver.test'],
+      upstream: 'http://dynresolver.test:18081',
+      dnsMode: 'manager',
+      dnsHost: 'dynresolver.test',
+      dnsResolvers: `127.0.0.1:${dnsServer.port}`,
+      dnsInterval: 30,
+    });
+    assert.equal(created.ok, true);
+    const r1 = await call('POST', '/api/refresh-dns');
+    assert.equal(r1.status, 200);
+    // 修复前：dns.Resolver.resolve4 缺回调会抛 "callback argument must be of type function"
+    assert.ok(!r1.data.errors.some((e) => /callback/i.test(e.error)), `不应出现 callback 类型错误: ${JSON.stringify(r1.data.errors)}`);
+    assert.equal(r1.data.changed.length, 1);
+    const { data: detail } = await call('GET', `/api/rules/${created.rule.id}`);
+    assert.deepEqual(detail.rule.resolvedIps, ['127.0.0.9']);
+    assert.match(detail.rule.upstream, /127\.0\.0\.9:18081/);
+  } finally {
+    dnsServer.socket.close();
+  }
+});
+
+test('refresh-dns：应用失败时规则不落盘、下轮自动重试（看门狗不卡死）', async () => {
+  const dnsServer = await startFakeDns({ 'dynfail.test': ['127.0.0.9'] });
+  let ruleId;
+  try {
+    const { data: created } = await call('POST', '/api/rules', {
+      name: '动态后端-生效失败',
+      domains: ['dynfail.test'],
+      upstream: 'http://dynfail.test:18082',
+      dnsMode: 'manager',
+      dnsHost: 'dynfail.test',
+      dnsResolvers: `127.0.0.1:${dnsServer.port}`,
+      dnsInterval: 30,
+    });
+    assert.equal(created.ok, true);
+    ruleId = created.rule.id;
+
+    // 模拟生效失败：fake-caddy reload/start 全部失败
+    process.env.FAKE_FAIL = '1';
+    try {
+      const r1 = await call('POST', '/api/refresh-dns');
+      assert.equal(r1.status, 400);
+      // 关键断言：生效失败后规则保持原状（upstream 仍是域名、未记录 resolvedIps），避免下次扫描误判“无变化”而卡死
+      assert.equal(r1.data.changed.length, 0);
+      assert.ok(r1.data.error && /失败/.test(r1.data.error), `应返回可读错误: ${r1.data.error}`);
+      const { data: afterFail } = await call('GET', `/api/rules/${ruleId}`);
+      assert.equal(afterFail.rule.upstream, 'http://dynfail.test:18082');
+      assert.equal(afterFail.rule.resolvedIps, undefined);
+      assert.ok(afterFail.rule.lastError, '生效失败原因应记录到 lastError 供面板展示');
+    } finally {
+      delete process.env.FAKE_FAIL;
+    }
+
+    // 生效恢复后：下一轮扫描自动重试并成功改写
+    const r2 = await call('POST', '/api/refresh-dns');
+    assert.equal(r2.status, 200);
+    assert.equal(r2.data.changed.length, 1);
+    const { data: afterOk } = await call('GET', `/api/rules/${ruleId}`);
+    assert.ok(Array.isArray(afterOk.rule.resolvedIps) && afterOk.rule.resolvedIps.length > 0);
+    assert.match(afterOk.rule.upstream, /:\/\/[0-9a-f.:]+:18082/);
+    // 回归：解析恢复成功后 lastError 应被清空，而不是残留旧错误
+    assert.equal(afterOk.rule.lastError, '');
+  } finally {
+    dnsServer.socket.close();
+  }
 });
 
 // ---------- Caddyfile 目标路径：自动定位 + 手动指定 ----------

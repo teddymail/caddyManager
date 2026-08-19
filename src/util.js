@@ -134,8 +134,10 @@ export function normalizeRule(input, { partial = false } = {}) {
     out.dnsResolvers = String(input.dnsResolvers).trim();
   }
   // 解析结果元数据（内部使用，允许透传）
+  // 注意：这里必须用 k in input 而不是 has(k)，否则 lastError: '' / resolvedIps: [] 这类
+  // "显式清空"的值会被当成缺省过滤掉，导致解析成功后旧错误残留、无法清空。
   for (const k of ['resolvedIps', 'lastCheckedAt', 'lastChangedAt', 'lastError']) {
-    if (has(k)) out[k] = input[k];
+    if (k in input) out[k] = input[k];
   }
 
   if (!partial && out.enabled === undefined) out.enabled = true;

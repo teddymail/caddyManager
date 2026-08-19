@@ -309,7 +309,7 @@ export function createApp(config, { store } = {}) {
 
   async function resolveHost(host, resolvers) {
     if (resolvers && resolvers.length) {
-      const r = new dns.Resolver();
+      const r = new dns.promises.Resolver();
       r.setServers(resolvers);
       return await r.resolve4(host);
     }
@@ -317,56 +317,97 @@ export function createApp(config, { store } = {}) {
     return res.map((x) => x.address);
   }
 
+  // 看门狗防重入：上一轮扫描未完成时跳过本次，避免定时器与手动刷新重叠导致重复应用
+  let refreshing = false;
+
   async function refreshDynamicRules() {
     const now = new Date().toISOString();
-    const changed = [];
-    const errors = [];
-    for (const r of app.store.list()) {
-      if (!r.enabled || r.dnsMode !== 'manager') continue;
-      const { host } = deriveUpstreamHostPort(r.upstream);
-      const watchHost = r.dnsHost || host;
-      if (!watchHost) continue;
-      // 首次解析时把监听域名回写进规则，避免后续只 watch 到固化后的 IP
-      const dnsHostPatch = r.dnsHost ? {} : { dnsHost: watchHost };
-      try {
-        const resolvers = r.dnsResolvers ? String(r.dnsResolvers).split(/[,\s]+/).filter(Boolean) : [];
-        const ips = [...new Set(await resolveHost(watchHost, resolvers))].sort();
-        const fmtIp = (ip) => (ip.includes(':') ? `[${ip}]` : ip);
-        if (!sameIps(ips, r.resolvedIps || [])) {
-          const { proto, port } = deriveUpstreamHostPort(r.upstream);
-          if (proto && port) {
-            const newUpstream = ips.map((ip) => `${proto}://${fmtIp(ip)}:${port}`).join(' ');
-            const u = await app.store.update(r.id, {
-              ...dnsHostPatch,
-              upstream: newUpstream,
-              resolvedIps: ips,
-              lastCheckedAt: now,
-              lastChangedAt: now,
-              lastError: '',
-            });
+    if (refreshing) {
+      return { checkedAt: now, changed: [], errors: [{ error: '上一次扫描尚未完成，已跳过本次' }], apply: null };
+    }
+    refreshing = true;
+    try {
+      const changed = [];
+      const errors = [];
+      const pending = []; // IP 有变化的规则：先应用配置、成功后才持久化
+      for (const r of app.store.list()) {
+        if (!r.enabled || r.dnsMode !== 'manager') continue;
+        const { host } = deriveUpstreamHostPort(r.upstream);
+        const watchHost = r.dnsHost || host;
+        if (!watchHost) continue;
+        // 首次解析时把监听域名回写进规则，避免后续只 watch 到固化后的 IP
+        const dnsHostPatch = r.dnsHost ? {} : { dnsHost: watchHost };
+        try {
+          const resolvers = r.dnsResolvers ? String(r.dnsResolvers).split(/[,\s]+/).filter(Boolean) : [];
+          const ips = [...new Set(await resolveHost(watchHost, resolvers))].sort();
+          const fmtIp = (ip) => (ip.includes(':') ? `[${ip}]` : ip);
+          if (!sameIps(ips, r.resolvedIps || [])) {
+            const { proto, port } = deriveUpstreamHostPort(r.upstream);
+            if (proto && port) {
+              const newUpstream = ips.map((ip) => `${proto}://${fmtIp(ip)}:${port}`).join(' ');
+              pending.push({
+                id: r.id,
+                name: r.name,
+                host: watchHost,
+                ips,
+                upstream: newUpstream,
+                patch: {
+                  ...dnsHostPatch,
+                  upstream: newUpstream,
+                  resolvedIps: ips,
+                  lastCheckedAt: now,
+                  lastChangedAt: now,
+                  lastError: '',
+                },
+              });
+            }
+          } else {
+            const u = await app.store.update(r.id, { ...dnsHostPatch, resolvedIps: ips, lastCheckedAt: now, lastError: '' });
             if (!u.ok) errors.push({ id: r.id, name: r.name, host: watchHost, error: u.error });
-            else changed.push({ id: r.id, name: r.name, host: watchHost, ips, upstream: newUpstream });
+          }
+        } catch (err) {
+          errors.push({ id: r.id, name: r.name, host: watchHost, error: String(err.message) });
+          await app.store.update(r.id, { ...dnsHostPatch, lastCheckedAt: now, lastError: String(err.message).slice(0, 200) });
+        }
+      }
+
+      let apply = null;
+      if (pending.length) {
+        // 先按“应用后”的规则快照生成并生效配置；成功才持久化，失败保持原状，下轮继续重试
+        const nextRules = app.store.list().map((r) => {
+          const p = pending.find((x) => x.id === r.id);
+          return p ? { ...r, ...p.patch } : r;
+        });
+        apply = await applyConfig({ config, rules: nextRules, options: {} });
+        if (apply.errors.length) {
+          const applyErr = apply.errors.join('; ');
+          for (const p of pending) {
+            errors.push({ id: p.id, name: p.name, host: p.host, error: applyErr });
+            // 生效失败不落盘 IP，但记录 lastError 供面板展示；下轮扫描会继续重试
+            await app.store.update(p.id, { lastCheckedAt: now, lastError: applyErr.slice(0, 200) });
           }
         } else {
-          const u = await app.store.update(r.id, { ...dnsHostPatch, resolvedIps: ips, lastCheckedAt: now, lastError: '' });
-          if (!u.ok) errors.push({ id: r.id, name: r.name, host: watchHost, error: u.error });
+          for (const p of pending) {
+            const u = await app.store.update(p.id, p.patch);
+            if (!u.ok) errors.push({ id: p.id, name: p.name, host: p.host, error: u.error });
+            else changed.push({ id: p.id, name: p.name, host: p.host, ips: p.ips, upstream: p.upstream });
+          }
         }
-      } catch (err) {
-        errors.push({ id: r.id, name: r.name, host: watchHost, error: String(err.message) });
-        await app.store.update(r.id, { ...dnsHostPatch, lastCheckedAt: now, lastError: String(err.message).slice(0, 200) });
       }
+      return { checkedAt: now, changed, errors, apply };
+    } finally {
+      refreshing = false;
     }
-    let apply = null;
-    if (changed.length) {
-      apply = await applyConfig({ config, rules: app.store.list(), options: {} });
-    }
-    return { checkedAt: now, changed, errors, apply };
   }
 
   router.post('/api/refresh-dns', async (req, res) => {
     const r = await refreshDynamicRules();
     const failed = r.apply && r.apply.errors.length;
-    sendJson(req, res, failed ? 400 : 200, { ok: !failed, ...r });
+    sendJson(req, res, failed ? 400 : 200, {
+      ok: !failed,
+      ...r,
+      error: failed ? r.apply.errors.join('\n') : undefined,
+    });
   });
 
 

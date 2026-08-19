@@ -3,6 +3,7 @@ data/rules.json
 data/settings.json
 data/Caddyfile
 data/*.tmp
+data/backups/
 *.log
 dist/
 *.bun-build

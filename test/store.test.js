@@ -19,6 +19,27 @@ test('规则写盘自动备份（数据回收站，保留上限 10 份）', asyn
   assert.equal(disk.length, 12);
 });
 
+test('update 可用空串/空数组清空解析元数据（lastError 不残留旧值）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cm-store-meta-'));
+  const store = new Store(path.join(tmp, 'rules.json'));
+  const { rule } = await store.create({ name: 'm', domains: ['m.com'], upstream: 'http://m.com:1' });
+
+  await store.update(rule.id, { lastError: '旧的错误', resolvedIps: ['1.2.3.4'], lastCheckedAt: 't1', lastChangedAt: 't2' });
+  let cur = store.get(rule.id);
+  assert.equal(cur.lastError, '旧的错误');
+  assert.deepEqual(cur.resolvedIps, ['1.2.3.4']);
+
+  // 回归：显式传空串/空数组必须能清空（此前 has() 把空串当"缺省"过滤，导致 lastError 残留）
+  await store.update(rule.id, { lastError: '', resolvedIps: [], lastCheckedAt: '', lastChangedAt: '' });
+  cur = store.get(rule.id);
+  assert.equal(cur.lastError, '');
+  assert.deepEqual(cur.resolvedIps, []);
+  // 真实落盘也保持一致
+  const disk = JSON.parse(fs.readFileSync(path.join(tmp, 'rules.json'), 'utf8'))[0];
+  assert.equal(disk.lastError, '');
+  assert.deepEqual(disk.resolvedIps, []);
+});
+
 test('数据目录只读时创建规则：明确报落盘失败并回滚内存', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cm-store-ro-'));
   const readonlyDir = path.join(tmp, 'ro');
