@@ -137,7 +137,7 @@
   }
 
   function readForm() {
-    return {
+    const body = {
       name: $('#f-name').value.trim(),
       domains: $('#f-domains').value,
       upstream: $('#f-upstream').value.trim(),
