@@ -1,6 +1,6 @@
 {
   "name": "caddymanager",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Caddy 反向代理配置管理服务：Web 管理面板 + REST API + 配置生成/下发/重载",
   "type": "module",
   "main": "src/server.js",

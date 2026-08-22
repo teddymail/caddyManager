@@ -124,7 +124,8 @@
     $('#f-dnsmode').value = rule ? (rule.dnsMode || 'off') : 'off';
     $('#f-dnshost').value = rule ? (rule.dnsHost || '') : '';
     const interval = rule ? (rule.dnsMode === 'manager' ? rule.dnsInterval : rule.lookupInterval) : 60;
-    $('#f-dnsinterval').value = interval || 60;
+    const intervalInput = $('#f-dnsinterval');
+    if (intervalInput) intervalInput.value = interval || 60;
     $('#f-dnsresolvers').value = rule ? (rule.dnsResolvers || '') : '';
     toggleDnsFields();
     $('#rule-modal').showModal();
@@ -154,7 +155,7 @@
       dnsResolvers: $('#f-dnsresolvers').value.trim(),
     };
     const mode = body.dnsMode;
-    const interval = Number($('#f-dnsinterval').value) || 60;
+    const interval = Number($('#f-dnsinterval')?.value) || 60;
     if (mode === 'caddy') body.lookupInterval = interval;
     if (mode === 'manager') body.dnsInterval = interval;
     return body;
