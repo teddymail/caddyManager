@@ -203,13 +203,12 @@ test('不配置 selfDomain 时不注入系统规则', () => {
 });
 
 // ---------- 零信任网关错误页 ----------
-test('零信任网关：注入 /__gateway-error 路由与 handle_response 4xx/5xx 拦截', () => {
+test('零信任网关：注入 /__gateway-error 路由与 handle_response 5xx 拦截', () => {
   const out = generateCaddyfile([base], { selfUpstream: 'http://127.0.0.1:8888' });
   assert.match(out, /handle \/__gateway-error \{/);
   assert.match(out, /handle_errors \{/);
-  assert.match(out, /@4xx status 400 /);
+  assert.doesNotMatch(out, /@4xx status/);
   assert.match(out, /@5xx status 500 /);
-  assert.match(out, /handle_response @4xx \{/);
   assert.match(out, /handle_response @5xx \{/);
   assert.match(out, /rewrite \* \/__gateway-error\?status=\{rp\.status_code\}/);
   assert.match(out, /rewrite \* \/__gateway-error\?status=\{http\.error\.status_code\}/);
@@ -240,9 +239,9 @@ test('零信任网关：GATEWAY_ID 可配置，注入 header 与追踪参数（�
 
 test('零信任网关：forwardHeaders=false 时不注入追踪头', () => {
   const out = generateCaddyfile([{ ...base, forwardHeaders: false }], { selfUpstream: 'http://127.0.0.1:8888' });
-  // 规则代理块不注入追踪头；仅错误页路由 / handle_errors / handle_response 4xx+5xx（内部管道）各保留一份
-  assert.equal((out.match(/X-Gateway-ID/g) || []).length, 4);
-  assert.equal((out.match(/X-Request-ID/g) || []).length, 4);
+  // 规则代理块不注入追踪头；错误页路由、handle_errors、handle_response 5xx 各保留一份
+  assert.equal((out.match(/X-Gateway-ID/g) || []).length, 3);
+  assert.equal((out.match(/X-Request-ID/g) || []).length, 3);
 });
 
 test('零信任网关：未配置 selfUpstream/fallbackTarget 时不注入错误页路由', () => {
