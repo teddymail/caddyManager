@@ -173,6 +173,7 @@ test('fallbackEnabled 生成默认兜底站点（转发到 Caddy Manager）', ()
     fallbackTarget: 'http://127.0.0.1:8888',
   });
   assert.match(out, /^:80 \{/m);
+  assert.match(out, /^https:\/\/ \{/m);
   assert.match(out, /reverse_proxy http:\/\/127\.0\.0\.1:8888/);
   assert.match(out, /header_up X-Real-IP/);
 });
@@ -180,6 +181,7 @@ test('fallbackEnabled 生成默认兜底站点（转发到 Caddy Manager）', ()
 test('fallbackEnabled=false 不生成兜底站点', () => {
   const out = generateCaddyfile([{ ...base }], { fallbackEnabled: false, fallbackTarget: 'http://127.0.0.1:8888' });
   assert.doesNotMatch(out, /^:80 \{/m);
+  assert.doesNotMatch(out, /^https:\/\/ \{/m);
 });
 
 test('selfDomain 系统保护规则：空规则列表也注入，指向自身', () => {

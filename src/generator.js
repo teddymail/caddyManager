@@ -233,18 +233,20 @@ export function generateCaddyfile(rules, opts = {}) {
     lines.push('}');
   }
 
-  // 默认兜底：未匹配任何规则的请求 -> 转发到 Caddy Manager 的 /__fallback（渲染 503 错误页）
+  // 默认兜底：HTTP/HTTPS 未匹配任何规则的请求 -> 转发到 Caddy Manager 的 /__fallback
   if (opts.fallbackEnabled !== false && opts.fallbackTarget) {
-    lines.push('');
-    lines.push(':80 {');
-    lines.push('    rewrite * /__fallback');
-    lines.push(`    reverse_proxy ${quote(opts.fallbackTarget)} {`);
-    lines.push('        trusted_proxies private_ranges');
-    lines.push('        header_up X-Real-IP {http.request.remote.host}');
-    lines.push(`        header_up X-Gateway-ID "${gatewayId}"`);
-    lines.push('        header_up X-Request-ID {http.request.uuid}');
-    lines.push('    }');
-    lines.push('}');
+    for (const address of [':80', 'https://']) {
+      lines.push('');
+      lines.push(`${address} {`);
+      lines.push('    rewrite * /__fallback');
+      lines.push(`    reverse_proxy ${quote(opts.fallbackTarget)} {`);
+      lines.push('        trusted_proxies private_ranges');
+      lines.push('        header_up X-Real-IP {http.request.remote.host}');
+      lines.push(`        header_up X-Gateway-ID "${gatewayId}"`);
+      lines.push('        header_up X-Request-ID {http.request.uuid}');
+      lines.push('    }');
+      lines.push('}');
+    }
   }
 
   lines.push('');
