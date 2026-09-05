@@ -30,7 +30,7 @@ function gatewayTraceHeaders(rule, gatewayId) {
   return headers;
 }
 
-/** 零信任网关内部管道：把诊断请求转发给 Manager 渲染错误页（handle_errors / handle_response / 错误页路由共用）。 */
+/** 零信任网关内部管道：把诊断请求转发给 Manager 渲染错误页。 */
 function gatewayErrorProxyLines(inner, gatewayTarget, gatewayId) {
   return [
     `${inner}reverse_proxy ${quote(gatewayTarget)} {`,
@@ -40,34 +40,6 @@ function gatewayErrorProxyLines(inner, gatewayTarget, gatewayId) {
     `${inner}    header_up X-Request-ID {http.request.uuid}`,
     `${inner}}`,
   ];
-}
-
-/** 零信任网关错误拦截：后端 5xx 时带链路与追踪信息重写到本服务的错误页。 */
-function gatewayErrorHandlers(indent, gatewayTarget, gatewayId) {
-  const inner = ' '.repeat(indent + 4);
-  const inner2 = ' '.repeat(indent + 8);
-  const query = [
-    'status={rp.status_code}',
-    'upstream={http.reverse_proxy.upstream.host}',
-    'host={http.request.host}',
-    'path={http.request.uri.path}',
-    'ip={http.request.remote.host}',
-    'log_id={http.request.uuid}',
-    `gateway_id=${gatewayId}`,
-  ].join('&');
-  // Caddy 2.9+ 要求 handle_response 使用命名响应匹配器，状态码需显式列出
-  const statusCodes = {
-    '5xx': '500 501 502 503 504 505 506 507 508 510 511',
-  };
-  const lines = [];
-  for (const [code, codes] of Object.entries(statusCodes)) {
-    lines.push(`${inner}@${code} status ${codes}`);
-    lines.push(`${inner}handle_response @${code} {`);
-    lines.push(`${inner2}rewrite * /__gateway-error?${query}`);
-    lines.push(...gatewayErrorProxyLines(inner2, gatewayTarget, gatewayId));
-    lines.push(`${inner}}`);
-  }
-  return lines;
 }
 
 /** reverse_proxy 块内选项（不含 path matcher，路径由 handle 承担）。 */
@@ -91,14 +63,11 @@ function reverseProxyBlockOptions(rule, gatewayId) {
 }
 
 /** 渲染一条规则的 reverse_proxy（普通或 dynamic a），写入 handle 块内（缩进 8 空格）。 */
-function renderReverseProxy(rule, indent, gatewayTarget, gatewayId) {
+function renderReverseProxy(rule, indent, gatewayId) {
   const pad = ' '.repeat(indent);
   const inner = ' '.repeat(indent + 4);
   const upstreams = upstreamList(rule);
   const blockOpts = reverseProxyBlockOptions(rule, gatewayId);
-  // 面板自身的系统保护规则不做错误拦截（面板本地即错误页，避免自环）
-  const errorHandlers = gatewayTarget && !rule.protected ? gatewayErrorHandlers(indent, gatewayTarget, gatewayId) : [];
-
   if (rule.dnsMode === 'caddy') {
     const { host, port } = deriveUpstreamHostPort(rule.upstream);
     const dnsHost = rule.dnsHost || host;
@@ -112,14 +81,12 @@ function renderReverseProxy(rule, indent, gatewayTarget, gatewayId) {
     }
     lines.push(`${inner}}`);
     for (const o of blockOpts) lines.push(`${inner}${o}`);
-    lines.push(...errorHandlers);
     lines.push(`${pad}}`);
     return lines;
   }
 
   const lines = [`${pad}reverse_proxy ${upstreams.join(' ')} {`];
   for (const o of blockOpts) lines.push(`${inner}${o}`);
-  lines.push(...errorHandlers);
   lines.push(`${pad}}`);
   return lines;
 }
@@ -220,12 +187,12 @@ export function generateCaddyfile(rules, opts = {}) {
       }
     }
 
-    // 零信任网关错误页路由：后端 5xx 经 handle_response 重写后回到本服务渲染
+    // 零信任网关错误页路由：仅上游连接失败时回到本服务渲染
     if (gatewayTarget && sorted.some((r) => !r.protected)) {
       lines.push('    handle /__gateway-error {');
       lines.push(...gatewayErrorProxyLines('        ', gatewayTarget, gatewayId));
       lines.push('    }');
-      // 后端失联/无响应（连接失败等）：handle_response 不生效，用 Caddy 错误处理直接转发渲染
+      // 后端失联/无响应（连接失败等）：用 Caddy 错误处理直接转发渲染
       const errQuery = [
         'status={http.error.status_code}',
         'host={http.request.host}',
@@ -247,20 +214,20 @@ export function generateCaddyfile(rules, opts = {}) {
         for (const hp of handlePaths(rule.path)) {
           lines.push(`    handle ${quote(hp)} {`);
           if (rule.stripPrefix) lines.push(`        uri strip_prefix ${quote(rule.path)}`);
-          lines.push(...renderReverseProxy(rule, 8, gatewayTarget, gatewayId));
+          lines.push(...renderReverseProxy(rule, 8, gatewayId));
           lines.push('    }');
         }
       } else if (sorted.length > 1) {
         // 组内有多条规则：无路径的作为兜底 handle
         lines.push('    handle {');
-        lines.push(...renderReverseProxy(rule, 8, gatewayTarget, gatewayId));
+        lines.push(...renderReverseProxy(rule, 8, gatewayId));
         lines.push('    }');
       } else if (isDynamic) {
         // 单条 dynamic a：直接块内 reverse_proxy
-        lines.push(...renderReverseProxy(rule, 4, gatewayTarget, gatewayId));
+        lines.push(...renderReverseProxy(rule, 4, gatewayId));
       } else {
         // 单条普通规则：直接块内 reverse_proxy（无 handle 包裹，保持简洁）
-        lines.push(...renderReverseProxy(rule, 4, gatewayTarget, gatewayId));
+        lines.push(...renderReverseProxy(rule, 4, gatewayId));
       }
     });
     lines.push('}');

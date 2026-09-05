@@ -192,18 +192,18 @@ node src/server.js          # 默认 8888 端口
 
 ### 零信任网关错误页（后端异常链路追踪）
 
-所有站点（每个被网关命中的网站）自动注入零信任网关错误页：**后端返回 5xx（如 500）或连接失联（502）时，不再裸奔显示后端错误，而是重写到 Caddy Manager 渲染的三节点链路诊断页**，上游正常返回的 4xx（如 404）会原样返回给用户，方便一眼定位问题出在哪一跳：
+所有站点（每个被网关命中的网站）自动注入零信任网关错误页：**仅在无法连接上游或上游连接中断时，才重写到 Caddy Manager 渲染的三节点链路诊断页**，上游正常返回的任何 HTTP 状态码（包括 404、500）都会原样返回给用户：
 
 ```
 你      ✓ 已正常（用户 IP + 主机名）
 网关    ✓ 正常（Caddy Manager）
-服务    ✗ 500/502（错误码；不展示后端内网地址）
+服务    ✗ 上游连接失败（不展示后端内网地址）
 ```
 
 页面同时展示请求路径、目标域名、**日志追踪 ID**、时间；管理员可凭日志追踪 ID 在「📄 Caddy 日志」里定位对应请求。页面展示的日志追踪 ID 是完整请求 ID 的 **SHA-256 摘要（前 12 位十六进制）**，简短高效；完整 ID 保留在 Caddy access log 的 `uuid` 字段与下发给后端的 `X-Request-ID` 头中，Manager 控制台会打印 `[gateway-trace] 追踪ID=… 完整ID=…` 一行用于对账。出于安全考虑，**后端内网地址不会展示给终端用户**（仅经内部管道携带 `upstream` 供日志定位）。链路信息全程向下游传递：
 
 - **向下游（后端）**：`X-Real-IP`（用户 IP）、`X-Request-ID`（请求日志 ID）、`X-Gateway-ID`（网关 ID）
-- **回传（错误页）**：网关经 `handle_response`（仅 5xx）/ `handle_errors` 重写到 `/__gateway-error`，以查询参数携带 `status` / `upstream` / `host` / `path` / `ip` / `log_id` / `gateway_id`
+- **回传（错误页）**：网关仅经 `handle_errors` 处理上游连接失败，重写到 `/__gateway-error`，以查询参数携带 `status` / `host` / `path` / `ip` / `log_id` / `gateway_id`
 
 网关 ID 默认 `caddymanager`，多网关实例可用环境变量 `GATEWAY_ID` 区分；`forwardHeaders=false` 的规则不注入追踪头。
 

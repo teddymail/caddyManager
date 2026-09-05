@@ -203,18 +203,14 @@ test('不配置 selfDomain 时不注入系统规则', () => {
 });
 
 // ---------- 零信任网关错误页 ----------
-test('零信任网关：注入 /__gateway-error 路由与 handle_response 5xx 拦截', () => {
+test('零信任网关：仅为上游连接失败注入 /__gateway-error 与 handle_errors', () => {
   const out = generateCaddyfile([base], { selfUpstream: 'http://127.0.0.1:8888' });
   assert.match(out, /handle \/__gateway-error \{/);
   assert.match(out, /handle_errors \{/);
-  assert.doesNotMatch(out, /@4xx status/);
-  assert.match(out, /@5xx status 500 /);
-  assert.match(out, /handle_response @5xx \{/);
-  assert.match(out, /rewrite \* \/__gateway-error\?status=\{rp\.status_code\}/);
+  assert.doesNotMatch(out, /handle_response/);
+  assert.doesNotMatch(out, /@5xx status/);
   assert.match(out, /rewrite \* \/__gateway-error\?status=\{http\.error\.status_code\}/);
   // 追踪参数：状态/上游/域名/路径/IP/日志ID/网关ID 随重写传递
-  assert.match(out, /status=\{rp\.status_code\}/);
-  assert.match(out, /upstream=\{http\.reverse_proxy\.upstream\.host\}/);
   assert.match(out, /host=\{http\.request\.host\}/);
   assert.match(out, /path=\{http\.request\.uri\.path\}/);
   assert.match(out, /ip=\{http\.request\.remote\.host\}/);
@@ -239,9 +235,9 @@ test('零信任网关：GATEWAY_ID 可配置，注入 header 与追踪参数（�
 
 test('零信任网关：forwardHeaders=false 时不注入追踪头', () => {
   const out = generateCaddyfile([{ ...base, forwardHeaders: false }], { selfUpstream: 'http://127.0.0.1:8888' });
-  // 规则代理块不注入追踪头；错误页路由、handle_errors、handle_response 5xx 各保留一份
-  assert.equal((out.match(/X-Gateway-ID/g) || []).length, 3);
-  assert.equal((out.match(/X-Request-ID/g) || []).length, 3);
+  // 规则代理块不注入追踪头；错误页路由与 handle_errors 各保留一份
+  assert.equal((out.match(/X-Gateway-ID/g) || []).length, 2);
+  assert.equal((out.match(/X-Request-ID/g) || []).length, 2);
 });
 
 test('零信任网关：未配置 selfUpstream/fallbackTarget 时不注入错误页路由', () => {
@@ -264,6 +260,7 @@ test('零信任网关：动态 DNS 规则同样注入错误拦截', () => {
     ...base, upstream: 'http://dyn-backend.example.com:8080',
     dnsMode: 'caddy', dnsHost: '', lookupInterval: 30, dnsResolvers: '8.8.8.8, 1.1.1.1',
   }], { selfUpstream: 'http://127.0.0.1:8888' });
-  assert.match(out, /handle_response @5xx \{/);
+  assert.match(out, /handle_errors \{/);
+  assert.doesNotMatch(out, /handle_response/);
   assert.match(out, /resolvers 8\.8\.8\.8 1\.1\.1\.1/);
 });
